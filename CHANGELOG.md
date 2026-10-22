@@ -2,6 +2,30 @@
 
 Reverse Engineer Anything. Newest first.
 
+## v1.11.0 (23 Oct 2026)
+
+Hardening round 11, proven findings only (6 reproduced). One finding was left
+unproven and unchanged: that Ghidra headless writes its log and settings under
+the sandboxed HOME on every run and so trips the escape scan (Ghidra is not
+installed on the build host).
+
+- The host-only list dropped real hosts followed by `;`, `)` or a backtick (CSP
+  strings, template literals; reproduced). `hosts.sh` now captures only
+  scheme, masked user-info, host and port, and both host lists are built with one
+  host pattern that also reads the endpoint file (tested: every host kept, no
+  npm-scope or credential fragments).
+- `codesign` filtering hid "code object is not signed at all", the answer for an
+  unsigned bundle (reproduced): output goes to a file and the pattern includes it.
+- The repository check never ended when `W` was unset or relative (reproduced):
+  it now requires `W` and stops at `.`; step 2 sets `W` inline.
+- One hand-over set (ledger, every `commands.log`, `report.md` if written, each
+  non-secret deliverable, the original), used at close and at live teardown.
+- "Extraction" means a tool creating files named from the sample; one named
+  output file (`pycdc`, `wasm2wat`, `lipo -thin`, `bundletool`) is not one.
+- A directory target locks `original/` after its copy; the macOS recipe's
+  `<App>.app` is `$W/original/target`; Go build settings and Info.plist output are
+  secret-bearing; the query example ends with `cat -v`.
+
 ## v1.10.0 (23 Oct 2026)
 
 Hardening round 10, proven findings only (7 reproduced: 3 by running the

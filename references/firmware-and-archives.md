@@ -70,9 +70,8 @@ take an output directory, is the one exception, handled below.
   member that is not `pyiboot*` or `pyi_rth_*`. A bare `.pyc` may need its header
   prepended: 16 bytes for Python 3.7+, 12 for 3.3 to 3.6, 8 before that.
   Disassemble with `pycdas`; decompile with `pycdc`, both of which print to
-  stdout: redirect into their own new directory (`mkdir "$W/out/pycdc-<name>"`,
-  then `> "$W/out/pycdc-<name>/<member>.py"`), which is the `$ROOT` for the
-  section 1 checks. If `pycdc` fails (common on
+  stdout: redirect each to one file (`> "$W/out/pycdc-<name>-<member>.py"`; a
+  single named file is not an extraction, SKILL.md section 1). If `pycdc` fails (common on
   3.11+) report the disassembly and mark behaviour inferred. Never
   `marshal.load`/`import` an untrusted `.pyc` yourself.
 - **AppImage:** an ELF (type 2) with a squashfs appended. Its own

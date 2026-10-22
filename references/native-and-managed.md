@@ -14,7 +14,7 @@ decompile anything:
   format strings, version stamps, error messages, bundled library names) goes to a
   file, never the screen, because it can hold keys; name it in the ledger as
   secret-bearing (SKILL.md section 1). Query it with `grep -c` and
-  targeted `grep -o ... | cut -c1-120 | sort -u` (SKILL.md section 4). Bound your
+  targeted `grep -o ... | cut -c1-120 | sort -u | cat -v` (SKILL.md section 4). Bound your
   conclusions to what you searched.
 - Imports / exports, what it calls out to, and what it offers:
   - ELF: `readelf -d`, `objdump -T`, `nm -D` (the dynamic table only). For a
@@ -104,7 +104,8 @@ On macOS, `readelf` and `nm -D` are not installed by default: use `llvm-readelf`
 
 - `go version -m <bin> > "$W/out/go-version-<name>.txt"` records the Go version, main
   module, dependency modules and build settings straight from the binary (build
-  settings can carry `-ldflags -X` values, so query the file), often the fastest answer to
+  settings can carry `-ldflags -X` values, so name the file secret-bearing and query
+  it), often the fastest answer to
   "what is this built from".
 - Go binaries are large and statically linked; `strings` surfaces package paths.
   For logic, use a current Ghidra release: it recovers Go function names and
@@ -191,7 +192,7 @@ a sample.
   URL path (a webhook) cannot be detected generically, so treat `endpoints-<name>.txt`
   as secret-bearing (mode 0600, never handed over) and report hosts from the
   host-only list rather than full URLs
-  (`cut -d/ -f3 "$W/out/endpoints-<name>.txt" | sed 's/^<cred>@//' | grep -E '^[A-Za-z0-9.-]+(:[0-9]+)?$' | LC_ALL=C sort -u > "$W/out/host-list-<name>.txt"`), and report
+  (`grep -oE '(//|<cred>@)[A-Za-z0-9.-]+(:[0-9]+)?' "$W/out/endpoints-<name>.txt" | sed -E 's#^(//|<cred>@)##' | LC_ALL=C sort -u > "$W/out/host-list-<name>.txt"`), and report
   a credential as file, key, type and length only (SKILL.md section 1).
 - Dependencies for an SBOM: the `pom.properties` groupId/artifactId/version, or
   hashes of bundled jars matched against the operator's known-set.
@@ -202,14 +203,19 @@ A `.app` is a directory; a `.pkg`/`.dmg` wraps one. Read, never launch.
 
 - `plutil -p <App>.app/Contents/Info.plist > "$W/out/info-plist-<name>.txt"`, then grep
   it for identifiers, versions and the executable name (`CFBundle`) rather than
-  reading it whole, since custom keys can hold API keys; the Mach-O is at
+  reading it whole, since custom keys can hold API keys (name the file
+  secret-bearing); the Mach-O is at
   `Contents/MacOS/<name>` (route it above).
 - `codesign -dvvv --entitlements :- <App>.app` for the signing identity and the
   entitlements (pipe to `plutil -p -` to read them); `lipo -info <binary>` and
   `lipo -thin <arch> <binary> -output "$W/out/<name>-<arch>"` to pick an architecture.
-- **Signed and notarised?** `codesign -dvvv <App>.app 2>&1 | grep -E
-  'Authority|TeamIdentifier|flags|Timestamp'` shows the Developer ID chain and the
-  hardened-runtime flag. Notarisation that has been stapled: `xcrun stapler
+- **Signed and notarised?** `codesign -dvvv <App>.app > "$W/out/codesign-<name>.txt" 2>&1`,
+  then `grep -E 'Authority|TeamIdentifier|flags|Timestamp|not signed' "$W/out/codesign-<name>.txt"`
+  shows the Developer ID chain and the hardened-runtime flag, or "code object is
+  not signed at all" for an unsigned bundle (a real answer, not a tool failure;
+  reproduced on an unsigned test bundle). `<App>.app` is the bundle at
+  `$W/original/target` (codesign and plutil only read it; batch reads use the
+  extracted copy, SKILL.md section 1). Notarisation that has been stapled: `xcrun stapler
   validate <App>.app`. `spctl -a -vv` needs Apple's online service, which the
   section 1 environment denies, so report "notarisation not determinable offline
   unless stapled". Also check the container's own signature: `codesign -dvvv

@@ -4,7 +4,7 @@ description: "Reverse Engineer Anything: analyse shipped software you cannot rea
 license: MIT
 compatibility: Any agent with a terminal/shell tool and file read/write. Needs an operator-supplied analysis environment with no network and no credentials (a disposable VM for live work), the open-source tools in references/toolchain.md installed there, a working directory outside synced folders, and an approver independent of the requester.
 metadata:
-  version: 1.10.0
+  version: 1.11.0
   author: Speedrun AI Labs
   tags: reverse-engineering, binary-analysis, security-research, interoperability
 ---
@@ -83,7 +83,8 @@ step, its output is untrusted, and only the lead appends to the ledger.
 
 1. The intake above.
 2. Create the empty `$W` and run the two location checks (the last two preflight
-   items) on it. Then create the layout, write `env.sh` and `run.sh`, and lock
+   items) on it, setting `W` to the absolute path inside that same call
+   (`W=/absolute/work/dir`), since `env.sh` does not exist yet. Then create the layout, write `env.sh` and `run.sh`, and lock
    them (section 1).
 3. Run the rest of the preflight (section 1). Stop if it fails.
 4. Copy and hash the original (section 1).
@@ -199,7 +200,7 @@ runs on a host that holds the operator's real credentials:
 - [ ] `env | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' | cut -d= -f1 | grep -Ei 'token|secret|passw|api_?key|credential|private_key'`
   prints nothing (variable names only; a value is never printed).
 - [ ] `$W` is not inside a repository (no `.git` in `$W` or any parent:
-  `d="$W"; while [ "$d" != / ]; do [ -e "$d/.git" ] && echo IN_REPO; d=$(dirname "$d"); done`
+  `: "${W:?set W}"; d="$W"; while [ "$d" != / ] && [ "$d" != . ]; do [ -e "$d/.git" ] && echo IN_REPO; d=$(dirname "$d"); done`
   prints nothing) and not under an iCloud, Dropbox, OneDrive or Google Drive folder.
 - [ ] `df -k "$W"` shows the size-bounded filesystem agreed at intake (a tmpfs or
   volume; a per-user quota, which `df` cannot show, is confirmed by the operator
@@ -211,15 +212,15 @@ never improvise one on the host.
 
 ### Identity
 
-Copy the original to `original/sample.<ext>`, make it read-only (`chmod a-w`), take
+A **file target:** copy the original to `original/sample.<ext>`, make it read-only (`chmod a-w`), take
 the size (`stat`) and SHA-256 (`shasum -a 256`, or `sha256sum`) of both the
 original and the copy, confirm they match, and record both. Every later finding
 cites this digest. Then `chmod a-w` the `original/` directory (in a comparison,
 each `$W/<version>/original/`), so it cannot gain or lose files either.
 
 A **directory target** (an installed `.app`, an unpacked install tree): copy it with
-`cp -a` to `original/target/` (links stay links), `chmod -R a-w` the copy, and
-write a manifest of each side with this helper, saved as
+`cp -a` to `original/target/` (links stay links), `chmod -R a-w` the copy, then
+`chmod a-w "$W/original"`, and write a manifest of each side with this helper, saved as
 `$W/scripts/manifest.sh` and locked with the other scripts at step 2:
 
 ```sh
@@ -273,11 +274,13 @@ changed.
   and neutralised by the next rule, not a stop.
 - **Check that nothing escaped.** An extractor can be tricked into writing outside
   its root (binwalk 2.3.3 and earlier did, CVE-2022-4510: use 2.3.4 or v3). An
-  **extraction** here is any tool that writes files from sample content: an
-  unpacker, a carver, or a decompiler (JADX, ILSpy, CFR, apktool, pycdc). Give it
-  its own new output directory (`mkdir`, under `extracted/` or `out/`; a tool that
-  prints to stdout is redirected into a file there); that directory is the `$ROOT`
-  this check skips. With no
+  **extraction** here is any tool that creates files whose names or paths come
+  from the sample: an unpacker, a carver, or a tree-writing decompiler (JADX,
+  ILSpy, CFR, apktool, pyinstxtractor). Give it its own new output directory
+  (`mkdir`, under `extracted/` or `out/`); that directory is the `$ROOT` this check
+  skips. A tool that writes only the one file you name, by redirect or `-o`
+  (`pycdc`, `pycdas`, `wasm2wat`, `lipo -thin`, `bundletool build-apks`), is not
+  an extraction: its file goes straight into `out/`, named for its target. With no
   other worker writing: write the step's ledger entry first, create its run
   directory with `mkdir "$W/scratch/<task>"` (no `-p`, so a directory that already
   exists fails loudly), wait one second, take `T0=$(date -u '+%Y-%m-%d %H:%M:%S UTC')`
@@ -452,7 +455,7 @@ Depth costs time and tokens; spend it only where the question needs it.
 7. **Keep sample-derived output out of your context.** Send any listing drawn from
    the sample (`strings`, a decompile, a symbol table, a capture) to a file in
    `$W/out/` first, then read it with counts and targeted searches (`grep -c`,
-   `grep -o 'pattern' | cut -c1-120 | sort -u`) rather than reading it whole, so an
+   `grep -o 'pattern' | cut -c1-120 | sort -u | cat -v`) rather than reading it whole, so an
    embedded key is not printed by accident. End any command that does display
    sample text with `| cat -v`. If a secret does reach the screen, record its type
    and location (section 1) and never repeat it. Run long jobs (a full decompile, a
@@ -519,11 +522,10 @@ Live analysis is off by default. Before any live work:
   it is untrusted like any other sample-derived data.
 - **Teardown.** When the session ends, stop everything it started; delete the
   secret-bearing `out/` files the ledger names; append the teardown entry, which
-  also holds the section 8 cleanup and data-handling records; then hash
-  `ledger.md`, `commands.log`, `report.md` and `out/` (directly, not through
-  `run.sh`, so the log does not change after its hash), post the digests, and
-  export exactly those files over the operator's channel, all **before** you roll
-  the VM back (the rollback erases them otherwise).
+  also holds the section 8 cleanup and data-handling records; then hash each file
+  of the hand-over set (section 8, Deliverables) directly, not through `run.sh`,
+  post the digests, and export exactly that set over the operator's channel, all
+  **before** you roll the VM back (the rollback erases them otherwise).
 
 Covered techniques and their isolation requirements are in
 [network and runtime](references/network-and-runtime.md): reading a recorded
@@ -620,9 +622,12 @@ version-diffing, corroboration and verification workflows.
   from your own design choices, and follow the organisation's approval process for
   that work. A reimplementation is informed by the analysis, not a copy of
   protected expression.
-- **Deliverables.** Name and hash every file you hand over (report, ledger,
-  `out/` artifacts such as an SBOM), so the operator can file them. A
-  secret-bearing file the ledger names is never a deliverable.
+- **Deliverables: the hand-over set.** One list, used at close and at live
+  teardown: `ledger.md`; every `commands.log` under `$W` (the lead's and each
+  subagent's `out/<name>/commands.log`); `report.md` if it was written; each
+  non-secret `out/` deliverable (per-item results, the host-only list, an SBOM),
+  hashed file by file; and the original with its digests. A secret-bearing file
+  the ledger names is never in it.
 - **Retention and cleanup**, in this order. Delete working extractions and the
   secret-bearing `out/` files the ledger names on completion, or on abort once
   the operator has answered the stop (they are its evidence until then), only by
@@ -632,10 +637,9 @@ version-diffing, corroboration and verification workflows.
   content to agent memory, notes, or synced stores. Never delete the original, the
   ledger or the report, and never leave a live session or sandbox running. Record
   the cleanup and the data-handling confirmation from section 0 item 5 in the
-  ledger. Then hash the ledger, `commands.log` and the report directly (not
-  through `run.sh`, which would change the log after its hash), post the digests
-  (section 7), and hand over exactly those files, with the original and its
-  digests, to the operator's evidence store.
+  ledger. Then hash each file of the hand-over set directly (not through `run.sh`,
+  which would change a log after its hash), post the digests (section 7), and
+  hand over exactly that set to the operator's evidence store.
 
 ---
 

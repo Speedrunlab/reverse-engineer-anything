@@ -53,9 +53,9 @@ read only what the question needs.
 
   ```sh
   #!/usr/bin/env bash
-  # hosts.sh <tree> <out-file>: candidate hosts, user-info masked
+  # hosts.sh <tree> <out-file>: candidate scheme://host[:port], user-info masked
   set -o pipefail; umask 077
-  LC_ALL=C grep -rEaoh -- "(wss?|https?)://[^/ \"'<>?#]+" "$1" | sed -E 's#//[^/]*@#//<cred>@#' | sort -u > "$2"
+  LC_ALL=C grep -rEaoh -- "(wss?|https?)://([^/ \"'<>?#]*@)?[A-Za-z0-9.-]+(:[0-9]+)?" "$1" | sed -E 's#//[^/]*@#//<cred>@#' | sort -u > "$2"
   ```
 
   Run it as `"$W/scripts/run.sh" "$W/scripts/hosts.sh" "$ROOT" "$W/out/hosts-<name>.txt"`.
@@ -64,8 +64,8 @@ read only what the question needs.
   sit, is masked rather than mistaken for a host; a password containing `/`, `?`
   or `#` can still leave a fragment, so name `hosts-<name>.txt` in the ledger as
   secret-bearing and never hand it over. The deliverable is the host-only list,
-  which keeps only well-formed host names:
-  `cut -d/ -f3 "$W/out/hosts-<name>.txt" | sed 's/^<cred>@//' | grep -E '^[A-Za-z0-9.-]+(:[0-9]+)?$' | LC_ALL=C sort -u > "$W/out/host-list-<name>.txt"`.
+  (tested on CSP strings, template literals and a binary file):
+  `grep -oE '(//|<cred>@)[A-Za-z0-9.-]+(:[0-9]+)?' "$W/out/hosts-<name>.txt" | sed -E 's#^(//|<cred>@)##' | LC_ALL=C sort -u > "$W/out/host-list-<name>.txt"`.
   Then find the call sites: `fetch(`, `XMLHttpRequest`,
   `WebSocket`, `net.request`, `https.request`, axios/got, the auto-updater feed
   (`autoUpdater.setFeedURL`, `resources/app-update.yml`, `build.publish` in
