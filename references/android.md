@@ -9,7 +9,8 @@ route applies to its container, but these tools understand its structure.
 The manifest answers a lot before any code:
 
 - `apktool d <app>.apk -o <outdir>` decodes the manifest and resources into
-  readable form (into `$W/extracted/`).
+  readable form, with `<outdir>` a new extraction root `$W/extracted/apktool-<name>/`
+  (never an existing directory: apktool refuses one, and `-f` would delete it).
 - Read `AndroidManifest.xml`: the package name, declared permissions, exported
   components (activities, services, receivers, providers), intent filters, the
   SDK levels (`android:minSdkVersion`/`android:targetSdkVersion`; apktool moves
@@ -22,7 +23,8 @@ The manifest answers a lot before any code:
 ## Code
 
 - **JADX** decompiles Dalvik bytecode to readable Java/Kotlin:
-  `jadx <app>.apk -d <outdir>` (or the GUI for exploration). Start from the entry
+  `jadx <app>.apk -d "$W/out/jadx-<name>"` (decompiler output lives in `$W/out/`; or
+  the GUI for exploration). Start from the entry
   points the manifest named, not every class.
 - `apktool` gives you **smali** (disassembled bytecode), lower level than JADX's
   Java, useful when the decompile is wrong or obfuscated.

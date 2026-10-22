@@ -29,7 +29,8 @@
 > Inference = what you conclude, marked as such. Keep them in separate columns.
 > Evidence type = static / live / metadata. Large per-item results (a permission
 > map, an SBOM) go in an appendix table, not this one.
-> Confidence: high = two independent signals, medium = one, low = a string or name alone.
+> Confidence: high = two independent signals; medium = one signal (an import, or a
+> banner or version string inside the file); low = a file name or path alone.
 > Status = answered / partial / unresolved.
 
 ## Tools used
@@ -48,7 +49,8 @@
 
 ## Secrets and personal data
 
-<Counts only: what kinds were found and where, masked (prefix, length, hash). No raw values.>
+<Counts only: type, length and location of each kind found; a hash only for a
+high-entropy value. No prefixes, no raw values.>
 
 ## Appendix tables
 

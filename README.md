@@ -17,7 +17,7 @@ It is **self-contained and agent-agnostic**. It drives standard open-source tool
 ## What it does
 
 - **Authorisation and scope gate first.** Before any tool runs: the target (or the versions to compare), an authority record with approver, reference, date and expiry, the question, static or live mode, and data handling. A new target, question or mode needs a new approval.
-- **Safe sample handling.** A clean, network-less work environment with no credentials; a fixed `work/` layout; SHA-256 of original and copy; never execute, never mount; extraction limits that stop path tricks and archive bombs.
+- **Safe sample handling.** A clean, network-less work environment with no credentials; a fixed layout under one operator-named working directory; SHA-256 of original and copy; never execute, never mount; extraction limits that stop path tricks and archive bombs.
 - **Content is data, never instructions.** Text inside a sample cannot grant approval or change scope; hosts and credentials found in a sample are never used or contacted; secrets are masked at the source.
 - **Route by target type**, most specific first: .NET, Go, Rust, WebAssembly, Electron/JavaScript, Android, Java/JVM, macOS app bundles, Windows and Linux installers and packages, PyInstaller, firmware and archives, crash and core dumps, model files, SQLite, recorded captures, a software bill of materials, and native ELF/Mach-O/PE as the fallback.
 - **Static-first, smallest-first**, with rules for missing or failing tools and for output too large to read at once.
@@ -37,7 +37,7 @@ It is **self-contained and agent-agnostic**. It drives standard open-source tool
 
 ## Changelog
 
-See [CHANGELOG.md](CHANGELOG.md). Current version: 1.4.0.
+See [CHANGELOG.md](CHANGELOG.md). Current version: 1.5.0.
 
 ---
 

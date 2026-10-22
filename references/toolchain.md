@@ -56,7 +56,7 @@ process that runs unreviewed code at install time.
 | macOS packages / signing | `xar`, `xcrun stapler`; `rcodesign` on Linux | Xcode command-line tools; github.com/indygreg/apple-platform-rs | Expand `.pkg`; check stapled notarisation; read Apple signatures off-Mac. |
 | Crash and core dumps | `gdb`, Breakpad `minidump_stackwalk`, `atos` (macOS) or `llvm-symbolizer` | distro packages; chromium.googlesource.com/breakpad; LLVM | Post-mortem backtraces and symbolication; never `run`. |
 | SBOM / component scan | **syft** (+ `grype` or `osv-scanner` for vulns, DB staged) | github.com/anchore/syft | Inventory components. syft has no DB; `SYFT_CHECK_FOR_APP_UPDATE=false` stops its only network call. |
-| Android | **apktool**, **JADX**, `aapt2` | github.com/iBotPeaches/Apktool, github.com/skylot/jadx | apktool for resources/manifest, JADX for Java/Kotlin. |
+| Android | **apktool**, **JADX**, `aapt2` | github.com/iBotPeaches/Apktool, github.com/skylot/jadx; `aapt2` from Android SDK build-tools | apktool for resources/manifest, JADX for Java/Kotlin. |
 | JavaScript / Electron | `@electron/asar`, `prettier` (formatting), the `source-map` package | npm (pinned, `--ignore-scripts`) | Extract ASAR, then format and map back. |
 | Android extras | `bundletool`, `apksigner` | github.com/google/bundletool; Android SDK build-tools | AAB to APK; signing certificates. |
 | PE signatures | `osslsigncode` | github.com/mtrojnar/osslsigncode | Read Authenticode signatures. |

@@ -4,7 +4,8 @@ Two kinds of work live here. **Reading a recorded capture** is static and needs
 no live-session envelope; the section 0 authorisation gate still applies (the
 capture is a sample). **Live observation**, running the target, attaching a
 debugger, driving a browser, or capturing fresh traffic, is gated (SKILL.md
-section 6): approved, owned, and isolated.
+section 6): approved, authorised (owned, vendor-consented, or sanctioned by the
+security lead), and isolated.
 
 ## Recorded captures (static)
 
@@ -21,23 +22,28 @@ A saved capture is just a file. Read it; do not replay or fetch from it.
   - **External** = any address outside RFC1918, loopback, link-local and multicast.
   - **Cleartext:** which hosts and ports carried application data in the clear,
     with the default output (which prints payload summaries) suppressed:
-    `-Y 'http.request||ftp||telnet||smtp||imap||pop||tftp||mqtt' -T fields -e ip.dst -e ipv6.dst -e tcp.dstport -e _ws.col.Protocol | sort | uniq -c`.
+    `-Y '(tcp.flags.syn==1 && tcp.flags.ack==0) && (tcp.dstport in {21 23 25 80 110 143 1883 8080})' -T fields -e ip.dst -e ipv6.dst -e tcp.dstport | sort | uniq -c`
+    (client SYNs only, so the destination is the server, not an ephemeral client
+    port), plus `-Y 'udp.dstport==69' -T fields -e ip.dst -e ipv6.dst | sort -u` for TFTP.
     List unencrypted DNS, NTP and mDNS separately as metadata, not secrets.
   - **Credentials in the clear:** count only, e.g.
     `-Y 'http.authorization || http.cookie || ftp.request.command=="PASS"' -T fields -e frame.number | wc -l`;
     never print the field. Report that N requests carried credentials, with the
-    hosts, not the values.
+    hosts, not the values. This count covers HTTP and FTP only: for other
+    cleartext protocols in the list above (POP, IMAP, SMTP, Telnet, MQTT), report
+    "credentials may be present in clear" for each host rather than a count.
   - **Rule:** never run `tshark -Y` without `-q` or `-T fields` (the default output
     prints packet summaries, including credentials). Run it under `timeout`.
   Report the flows and fields you observed; a page of packets does not prove
   network completeness, and a capture is one session, not the app's whole behaviour.
 - **HAR** (browser export), JSON of requests/responses. Project only non-secret
   fields rather than reading raw headers into context:
-  `jq -r '.log.entries[] | (.request.method+" "+(.request.url|sub("\\?.*";"")))' <file> | sort -u`
+  `jq -r '.log.entries[] | (.request.method+" "+(.request.url|sub("^[a-z]+://([^/@]*@)?";"")|split("/")[0]))' <file> | sort -u`
+  (method and host only: user-info, path and query, where tokens sit, are dropped)
   for the endpoints; count auth headers rather than printing them. Do not fetch
   the recorded URLs.
 - **Saved mitmproxy flows / SAZ**: read with the matching reader
-  (`mitmdump -n -r <flows>`: `-n` starts no proxy listener; never use replay options; a SAZ reader for Fiddler). Treat bodies
+  (`mitmdump -n -r <flows> > "$W/out/flows.txt"`, read with targeted searches, since it prints full URLs; `-n` starts no proxy listener; never use replay options; a SAZ reader for Fiddler). Treat bodies
   as recorded evidence, not live attribution.
 - **Never read a credential into context.** Captures carry cookies, tokens and
   auth headers. Select non-sensitive fields only (the projections above); report
@@ -48,7 +54,8 @@ A saved capture is just a file. Read it; do not replay or fetch from it.
 ## Live observation (approval-gated, isolated)
 
 Only when static evidence cannot answer the question, and section 6's conditions
-are met: approved, the artifact is owned, and it runs in a disposable VM (a
+are met: approved, authorised (owned, vendor-consented, or sanctioned by the
+security lead), and it runs in a disposable VM (a
 container is not enough for untrusted native code; SKILL.md section 6), never the
 host with credentials, keys or signed-in sessions, and never a personal browser
 profile.

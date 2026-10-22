@@ -17,7 +17,7 @@ then route each payload.
   directory as `-d`, v2 as `-C` (in v2, `-d` means depth).
 - **Carve** with `binwalk -e -d <outdir> <image>` (v3) or `binwalk -e -C <outdir> <image>` (v2) or, for broader format coverage
   and recursive extraction, **unblob** (`unblob -e <outdir> <image>`). Both write into a
-  directory you choose: point it at `$W/extracted/`.
+  directory you choose: point it at a new extraction root `$W/extracted/<name>/`.
 - **Re-identify every carved payload** (`file`, magic bytes) and route it:
   a squashfs or ext filesystem unpacked with `unsquashfs` or `7zz` (never mounted);
   a native blob to
@@ -55,7 +55,8 @@ Every tool below gets an explicit output directory under `$W/extracted/<name>/`
   version from the embedded `python3NN.dll`/`libpython3.NN`. List members with
   `pyi-archive_viewer -l <exe>`. pyinstxtractor writes into the current directory,
   so give it a fresh one and apply the section 1 caps:
-  `mkdir "$W/scratch/pyi-1" && cd "$W/scratch/pyi-1" && timeout 600 python3 -I <path>/pyinstxtractor.py <abs exe>`.
+  `mkdir "$W/scratch/pyi-1" && cd "$W/scratch/pyi-1" && "$W/scripts/run.sh" timeout 600 python3 -I <path>/pyinstxtractor.py <abs exe>`
+  (through `run.sh`, so it is logged like every other tool).
   Run the section 1 post-extraction check on its output, then move it to a new
   extraction root (`mv` into `$W/extracted/pyi-1/`). It parses the archive's table
   of contents with `marshal` (hostile data parsed in memory, not code run), one

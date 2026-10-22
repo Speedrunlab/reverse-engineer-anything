@@ -2,6 +2,36 @@
 
 Reverse Engineer Anything. Newest first.
 
+## v1.5.0 (23 Oct 2026)
+
+Hardening round 5 (adversarial, fresh-reader), scope frozen. Every changed
+command below was run against a test tree before shipping, except the tshark
+filters (tshark not installed on the build host; checked against the Wireshark
+display-filter documentation).
+
+- Link neutralisation is one NUL-safe command that acts only on paths `find`
+  produced; tested with a newline-named link aimed at the ledger (ledger intact).
+  Out-of-root symlinks in a filesystem image are now expected, recorded and
+  neutralised, not a stop.
+- Preflight judges the network by `curl`'s specific exit codes (6, 7, 28), so a
+  missing or broken tool can no longer pass for "offline"; repository detection
+  walks parent folders for `.git`; a size-bounded filesystem is required at intake
+  and checked with `df`.
+- Sample-derived listings (`strings`, decompiles, captures) go to files and are
+  queried with counts and targeted searches, never read whole; `cat -v` ends any
+  command that displays sample text. Pipelines are logged whole via
+  `run.sh bash -c '...' _ <file>`.
+- One confidence scale everywhere; the ledger's first entry uses `prev: genesis`
+  and its contents are listed in one place; per-item results (permission map,
+  SBOM) have a home in `$W/out/` whether or not a report is filed; extraction
+  always targets a new root, decompiler output lives in `$W/out/`.
+- Masking: the JavaScript host list masks user-info keys (a Sentry DSN key no
+  longer reads as a host); the endpoint pipeline gains `pipefail` and more secret
+  parameter names and is treated as secret-bearing; the HAR projection keeps only
+  method and host; cleartext reporting keys on client SYNs and is honest about
+  which protocols the credential count covers; the template no longer asks for
+  secret prefixes. `JAVA_TOOL_OPTIONS` also pins `java.io.tmpdir`.
+
 ## v1.4.0 (23 Oct 2026)
 
 Hardening round 4 (fresh-reader, adversarial, accuracy). Scope frozen: fixes only.

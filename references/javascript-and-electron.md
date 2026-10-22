@@ -47,8 +47,9 @@ read only what the question needs.
 ## What to read for common questions
 
 - **"What does it call home to"**: collect candidate hosts with
-  `grep -rEoh 'wss?://[A-Za-z0-9.-]+|https?://[A-Za-z0-9.-]+' <tree> | sort -u >
-  $W/out/hosts.txt`, then find the call sites: `fetch(`, `XMLHttpRequest`,
+  `grep -rEoh -- "(wss?|https?)://[^/ \"'<>?#]+" <tree> | sed -E 's#//[^/]*@#//<cred>@#' | sort -u >
+  $W/out/hosts.txt` (the user-info part, where keys such as a Sentry DSN key sit, is
+  masked rather than mistaken for a host), then find the call sites: `fetch(`, `XMLHttpRequest`,
   `WebSocket`, `net.request`, `https.request`, axios/got, the auto-updater feed
   (`autoUpdater.setFeedURL`, `resources/app-update.yml`, `build.publish` in
   `package.json`), crash reporting and analytics settings, and any

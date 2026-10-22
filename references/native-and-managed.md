@@ -10,9 +10,11 @@ For any compiled file, the inventory often answers the question before you
 decompile anything:
 
 - `file <bin>`: format, architecture, stripped or not, static or dynamic.
-- `strings -a -n 6 <bin>`: embedded text: URLs, paths, format strings, version
-  stamps, error messages, bundled library names. Bound your conclusions to what
-  you searched.
+- `strings -a -n 6 -- <bin> > "$W/out/strings.txt"`: embedded text (URLs, paths,
+  format strings, version stamps, error messages, bundled library names) goes to a
+  file, never the screen, because it can hold keys. Query it with `grep -c` and
+  targeted `grep -o ... | cut -c1-120 | sort -u` (SKILL.md section 4). Bound your
+  conclusions to what you searched.
 - Imports / exports, what it calls out to, and what it offers:
   - ELF: `readelf -d`, `objdump -T`, `nm -D`.
   - Mach-O: `otool -L` (linked libs), `otool -l`, `nm`.
@@ -43,7 +45,9 @@ On macOS, `readelf` and `nm -D` are not installed by default: use `llvm-readelf`
 - **What does it export or import?** The symbol and import tables above; record
   them to `$W/out/` and answer from the file.
 - **Is it signed, and by whom?** `codesign -dvvv` (Mach-O); for PE, a signature
-  reader such as `osslsigncode verify`.
+  reader such as `osslsigncode verify`. Revocation needs the network, which the
+  section 1 environment denies, so any revocation lookup fails: record revocation
+  as "not checked".
 
 ## Decompilation (when a function's logic is the question)
 
@@ -145,16 +149,19 @@ a sample.
   file, so no raw value reaches the screen (`$ROOT` is the decompiled tree):
 
   ```sh
-  umask 077
+  set -o pipefail; umask 077
   grep -rEoh -- "((https?|wss?|amqps?|rediss?|ldaps?|mongodb(\+srv)?|jdbc:[a-z0-9:]+)://[^ \"'<>]+|jdbc:oracle:thin:[^ \"'<>]+)" "$ROOT" \
-  | sed -E "s#//[^/ \"']*@#//<cred>@#g; s#(thin:)[^@ \"']*@#\1<cred>@#g; s/((pass(word|wd)?|pwd|secret|token|api_?key|access_?key)=)[^&; \"']*/\1<redacted>/Ig" \
+  | sed -E "s#//[^/ \"']*@#//<cred>@#g; s#(thin:)[^@ \"']*@#\1<cred>@#g; s/((pass(word|wd)?|pwd|secret|token|api_?key|access_?key|access_token|client_secret|key|sig(nature)?|auth)=)[^&; \"']*/\1<redacted>/Ig" \
   | sort -u > "$W/out/endpoints.txt"
   ```
 
   It masks URL user-info (including a password containing `@`), the Oracle
-  `user/pass@` form and secret query parameters. Then list hosts with
-  `cut -d/ -f3 "$W/out/endpoints.txt" | sort -u`. Report a credential as file, key,
-  type and length only (SKILL.md section 1).
+  `user/pass@` form and common secret query parameters; `pipefail` makes a failed
+  stage an error rather than an empty "no endpoints" file. A token embedded in a
+  URL path (a webhook) cannot be detected generically, so treat `endpoints.txt` as
+  secret-bearing: keep it at mode 0600, report hosts
+  (`cut -d/ -f3 "$W/out/endpoints.txt" | sort -u`) rather than full URLs, and report
+  a credential as file, key, type and length only (SKILL.md section 1).
 - Dependencies for an SBOM: the `pom.properties` groupId/artifactId/version, or
   hashes of bundled jars matched against the operator's known-set.
 
