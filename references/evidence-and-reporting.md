@@ -38,9 +38,10 @@ observed execution. "The code can reach host X" is not "the app contacted X".
 
 A common and high-value task: what changed between two releases.
 
-- **Layout.** Each version gets its own subdirectory and its own digest:
-  `work/v1.2/` and `work/v1.3/`, each with `original/`, `extracted/` and `out/`.
-  The one `work/ledger.md`, `work/commands.log` and `work/out/` (for the diffs)
+- **Layout.** Each version gets its own subdirectory, its own extraction roots
+  (SKILL.md section 1 rules apply to each) and its own digest:
+  `$W/v1.2/` and `$W/v1.3/`, each with `original/`, `extracted/` and `out/`.
+  The one `$W/ledger.md`, `$W/commands.log` and `$W/out/` (for the diffs)
   stay at the top level. The report lists both identities.
 - Normalise both sides the same way before diffing: extract/decompile/format
   each with the **same tool at the same version and settings**, or the diff is
@@ -50,9 +51,9 @@ A common and high-value task: what changed between two releases.
   empty files before diffing, and use `--no-dereference` where the local `diff`
   supports it (GNU diffutils 3.3+; the macOS BSD `diff` may not, so run diffs in
   the Linux VM).
-- **Summary first.** `diff -rq --no-dereference work/v1.2/extracted
-  work/v1.3/extracted > work/out/diff-files.txt` lists which files changed; then
-  `diff -u` one file at a time into `work/out/`, reading with `head`. Never pour a
+- **Summary first.** `diff -rq --no-dereference $W/v1.2/extracted
+  $W/v1.3/extracted > $W/out/diff-files.txt` lists which files changed; then
+  `diff -u` one file at a time into `$W/out/`, reading with `head`. Never pour a
   whole-tree diff into your context.
 - **Obfuscated or minified builds** rename symbols between versions, so a code
   diff is mostly noise. Compare what survives renaming: manifests and permissions

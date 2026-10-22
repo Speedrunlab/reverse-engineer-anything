@@ -16,7 +16,7 @@
 
 ## Summary
 
-<2–4 sentences, plain language: what was asked, what was found, how confident.>
+<Two to four sentences, plain language: what was asked, what was found, how confident.>
 
 ## Findings
 

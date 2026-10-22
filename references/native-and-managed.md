@@ -41,7 +41,7 @@ On macOS, `readelf` and `nm -D` are not installed by default: use `llvm-readelf`
   - Confidence: a version string inside the file plus calls into its routines is
     high; a string alone is medium (it may be vendored but unused, or stale).
 - **What does it export or import?** The symbol and import tables above; record
-  them to `work/out/` and answer from the file.
+  them to `$W/out/` and answer from the file.
 - **Is it signed, and by whom?** `codesign -dvvv` (Mach-O); for PE, a signature
   reader such as `osslsigncode verify`.
 
@@ -57,7 +57,7 @@ On macOS, `readelf` and `nm -D` are not installed by default: use `llvm-readelf`
 - **rizin / radare2** for quick disassembly, cross-references and scripting when
   you do not need full decompilation. Run `aaa` (analysis) first; then `izz`
   (strings), `afl` (functions), `axt` (xrefs to an address), `pdf` (disassemble a
-  function). Send large listings to a file in `work/out/`.
+  function). Send large listings to a file in `$W/out/`.
 - Work from a seed: an exported symbol, a string's cross-reference, an import
   call site. Follow it outward only as far as the question needs.
 
@@ -128,7 +128,7 @@ a sample.
 - `unzip -l <jar>` to inventory; read `META-INF/MANIFEST.MF` (Main-Class,
   versions) and any `META-INF/maven/**/pom.properties` for component versions.
 - `javap -c -p -v <Class>` disassembles bytecode and shows the constant pool.
-  Decompile with **CFR** (`java -jar cfr.jar --outputdir work/out/cfr <jar>`, which
+  Decompile with **CFR** (`java -jar cfr.jar --outputdir $W/out/cfr <jar>`, which
   writes files instead of flooding stdout) or **Vineflower**; JADX also reads
   `.jar`. Treat decompiler output as a reconstruction.
 - A Spring Boot fat jar nests dependencies under `BOOT-INF/lib/*.jar`; those are
@@ -141,10 +141,20 @@ a sample.
   it separately from the implementation (log4j2, logback). Take the version from
   the nested jar's `MANIFEST.MF` `Implementation-Version` or its `pom.properties`,
   not the filename alone.
-- **Hard-coded endpoints and credentials:** `strings`/grep the decompiled tree for
-  `grep -Eoh '(https?|jdbc:[a-z]+|amqp|redis|mongodb)://[^ "'"'"']+'`, then mask
-  before recording (`sed -E 's#//[^/@]*@#//<cred>@#; s/(password|pwd|secret|token|apikey|key)=[^&;]*/\1=<redacted>/Ig'`).
-  Report a credential as file, key, type and length only (SKILL.md section 1).
+- **Hard-coded endpoints and credentials:** one pipeline, straight to a mode-0600
+  file, so no raw value reaches the screen (`$ROOT` is the decompiled tree):
+
+  ```sh
+  umask 077
+  grep -rEoh -- "((https?|wss?|amqps?|rediss?|ldaps?|mongodb(\+srv)?|jdbc:[a-z0-9:]+)://[^ \"'<>]+|jdbc:oracle:thin:[^ \"'<>]+)" "$ROOT" \
+  | sed -E "s#//[^/ \"']*@#//<cred>@#g; s#(thin:)[^@ \"']*@#\1<cred>@#g; s/((pass(word|wd)?|pwd|secret|token|api_?key|access_?key)=)[^&; \"']*/\1<redacted>/Ig" \
+  | sort -u > "$W/out/endpoints.txt"
+  ```
+
+  It masks URL user-info (including a password containing `@`), the Oracle
+  `user/pass@` form and secret query parameters. Then list hosts with
+  `cut -d/ -f3 "$W/out/endpoints.txt" | sort -u`. Report a credential as file, key,
+  type and length only (SKILL.md section 1).
 - Dependencies for an SBOM: the `pom.properties` groupId/artifactId/version, or
   hashes of bundled jars matched against the operator's known-set.
 
@@ -164,11 +174,10 @@ A `.app` is a directory; a `.pkg`/`.dmg` wraps one. Read, never launch.
   section 1 environment denies, so report "notarisation not determinable offline
   unless stapled". Also check the container's own signature: `codesign -dvvv
   <f>.dmg`. Do not trust `codesign --verify` on a `7zz` extract (it loses symlinks
-  and xattrs); verify on the mounted-read original only if a macOS host is
-  available, else record the limit. A macOS host is needed for `codesign`/`spctl`;
-  on Linux use `rcodesign print-signature-info`.
+  and xattrs); record that as a limit rather than mounting the image. A macOS host
+  is needed for `codesign`/`spctl`; on Linux use `rcodesign print-signature-info`.
 - `.pkg`: `pkgutil --check-signature` and `pkgutil --expand-full` (or `xar -xf`).
-  `.dmg`: unpack with `7zz x` into `work/extracted/`, do not `hdiutil attach`
+  `.dmg`: unpack with `7zz x` into `$W/extracted/`, do not `hdiutil attach`
   (that mounts it).
 - ASAR, embedded frameworks and XPC services under `Contents/` are each their own
   target.

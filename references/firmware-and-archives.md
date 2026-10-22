@@ -2,7 +2,7 @@
 
 Covers artifacts that carry other artifacts (firmware images, installers, packed
 executables, archives) and self-contained data files (model files, SQLite). All
-static and read-only; cite the sample's SHA-256; carve into `work/extracted/`
+static and read-only; cite the sample's SHA-256; carve into `$W/extracted/`
 only.
 
 ## Firmware images and packed blobs
@@ -17,7 +17,7 @@ then route each payload.
   directory as `-d`, v2 as `-C` (in v2, `-d` means depth).
 - **Carve** with `binwalk -e -d <outdir> <image>` (v3) or `binwalk -e -C <outdir> <image>` (v2) or, for broader format coverage
   and recursive extraction, **unblob** (`unblob -e <outdir> <image>`). Both write into a
-  directory you choose: point it at `work/extracted/`.
+  directory you choose: point it at `$W/extracted/`.
 - **Re-identify every carved payload** (`file`, magic bytes) and route it:
   a squashfs or ext filesystem unpacked with `unsquashfs` or `7zz` (never mounted);
   a native blob to
@@ -33,11 +33,11 @@ then route each payload.
 
 Unpack, never run. (`7zz` is official 7-Zip; `7z` is p7zip, either works for ZIP.)
 
-Every tool below gets an explicit output directory under `work/extracted/<name>/`
-(their default is the current directory) and runs from `work/scratch/`.
+Every tool below gets an explicit output directory under `$W/extracted/<name>/`
+(their default is the current directory) and runs from `$W/scratch/`.
 
 - **General archive:** `7zz l -slt <archive>` to inventory and check paths, then
-  `7zz x <archive> -o<work/extracted/name>`.
+  `7zz x <archive> -o<$W/extracted/name>`.
 - **Windows MSI:** `msiinfo tables <f>.msi` then `msiinfo export <f>.msi <table>`
   per table, and `msiextract -C <dir> <f>.msi` (msitools), or `lessmsi` on Windows;
   `7zz` sees MSI streams only by cryptic names, so prefer msitools. **Inno Setup:**
@@ -46,21 +46,25 @@ Every tool below gets an explicit output directory under `work/extracted/<name>/
   Never `msiexec /a`.
 - **Linux packages:** `dpkg-deb -c <f>.deb` (list), `-x <f>.deb <dir>` (files) and
   `-e <f>.deb <dir>` (the maintainer scripts; read, never run); `rpm -qp --scripts
-  <f>.rpm` then `bsdtar -xf <f>.rpm -C <dir>` (or `rpm2cpio <f>.rpm | (cd <dir> &&
-  cpio -idmv)`). The maintainer scripts are part of the review.
+  <f>.rpm` then `bsdtar -xf <f>.rpm -C <dir>` (bsdtar reads rpm directly, so no
+  `cd` into the output is needed). The maintainer scripts are part of the review.
 - **macOS `.pkg`/`.dmg`:** `pkgutil --expand-full <f>.pkg <dir>` or `xar -xf <f>.pkg
   -C <dir>` for a pkg; `7zz x` for a dmg. Do not `hdiutil attach` (that mounts it).
 - **PyInstaller executable:** confirm it
   (`strings -a -n 6 <exe> | grep -c -e MEIPASS -e PyInstaller`) and read the Python
   version from the embedded `python3NN.dll`/`libpython3.NN`. List members with
-  `pyi-archive_viewer -l <exe>`. Extract with pyinstxtractor **from a fresh empty
-  subfolder** (`cd work/scratch && python3 -I <path>/pyinstxtractor.py <abs exe>`,
-  the one permitted run-from-cwd case, because the tool writes beside itself); move
-  the output under `work/extracted/`. The entry script is the member that is not
-  `pyiboot*` or `pyi_rth_*`; a `.pyc` may need its 16-byte header for that Python
-  version prepended. Disassemble with `pycdas`; decompile with `pycdc`, and if it
-  fails (common on 3.11+) report the disassembly and mark behaviour inferred.
-  Never `marshal.load`/`import` an untrusted `.pyc`.
+  `pyi-archive_viewer -l <exe>`. pyinstxtractor writes into the current directory,
+  so give it a fresh one and apply the section 1 caps:
+  `mkdir "$W/scratch/pyi-1" && cd "$W/scratch/pyi-1" && timeout 600 python3 -I <path>/pyinstxtractor.py <abs exe>`.
+  Run the section 1 post-extraction check on its output, then move it to a new
+  extraction root (`mv` into `$W/extracted/pyi-1/`). It parses the archive's table
+  of contents with `marshal` (hostile data parsed in memory, not code run), one
+  more reason it runs only in the section 1 environment. The entry script is the
+  member that is not `pyiboot*` or `pyi_rth_*`. A bare `.pyc` may need its header
+  prepended: 16 bytes for Python 3.7+, 12 for 3.3 to 3.6, 8 before that.
+  Disassemble with `pycdas`; decompile with `pycdc`, and if it fails (common on
+  3.11+) report the disassembly and mark behaviour inferred. Never
+  `marshal.load`/`import` an untrusted `.pyc` yourself.
 - **AppImage:** an ELF (type 2) with a squashfs appended. Its own
   `--appimage-extract` runs the file (live mode); instead compute the offset from
   the ELF header (`e_shoff + e_shentsize * e_shnum`, read with `readelf -h`) and
@@ -85,10 +89,11 @@ Every tool below gets an explicit output directory under `work/extracted/<name>/
 ## SQLite databases
 
 - Open a **copy** safely: `sqlite3 -readonly -init /dev/null copy.db`, then
-  `PRAGMA trusted_schema=OFF;` as the first statement. `-readonly` stops database
-  writes but not a `writefile()` planted in a view, and the CLI otherwise reads
-  `~/.sqliterc`; `-init /dev/null` and `trusted_schema=OFF` close those. Never open
-  the operator's live database.
+  `PRAGMA trusted_schema=OFF;` as the first statement. These are defence in depth:
+  `-init /dev/null` stops the CLI reading `~/.sqliterc`, and `trusted_schema=OFF`
+  stops a view or trigger calling functions that are not marked safe (current CLIs
+  already block their own `writefile()` there; older or custom builds may not).
+  Never open the operator's live database.
 - **Schema first:** `.schema` (or `SELECT sql FROM sqlite_master`) before any row
   read. Read only **base tables** (`SELECT ... FROM "t"`), never a view or a
   virtual table (both can run functions). Select only the non-sensitive columns
@@ -115,11 +120,13 @@ materials. Work from strongest evidence to weakest, one ledger entry per method:
    filename alone is weak.
 4. **Licence files** under `/usr/share/doc`, `LICENSE`, `NOTICE`.
 
-Write the result to `work/out/sbom.cdx.json` in CycloneDX form (name, version,
+Write the result to `$W/out/sbom.cdx.json` in CycloneDX form (name, version,
 path, detection method, confidence). If the operator has staged **syft**,
-`SYFT_CHECK_FOR_APP_UPDATE=false syft dir:work/extracted -o cyclonedx-json`
-cross-checks the manual pass (syft has no vulnerability DB; the env var stops its
-only network call, the app-update check). Vulnerability matching, if asked, is a
+`"$W/scripts/run.sh" syft dir:"$ROOT" -o cyclonedx-json="$W/out/syft.cdx.json"`
+cross-checks the manual pass, after the section 1 link step on that root (syft has
+no vulnerability DB; `SYFT_CHECK_FOR_APP_UPDATE=false`, set in `env.sh`, stops its
+only network call, and `TMPDIR` in `env.sh` keeps its temporary unpacking inside
+`$W`). Vulnerability matching, if asked, is a
 separate tool (grype/osv-scanner) with its DB staged and updates disabled. Confidence is high when a package
 DB or a SONAME plus a banner agree; medium for a single banner; low for a path or
 filename. State coverage: a clean extraction inventoried, or carving that may have

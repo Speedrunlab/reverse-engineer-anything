@@ -14,16 +14,21 @@ A saved capture is just a file. Read it; do not replay or fetch from it.
   `capinfos <file>` (span, snaplen, counts) and `tshark -nr <file> -q -z io,phs`
   (the protocol hierarchy). Then answer the usual questions without printing
   payloads:
-  - **Hosts and protocols:** `-q -z conv,ip` and `-q -z conv,udp`/`conv,tcp`.
+  - **Hosts and protocols:** `-q -z conv,ip -z conv,ipv6` and `-q -z conv,tcp -z conv,udp`
+    (`conv,ip` alone misses IPv6 and would make a "no external host" claim wrong).
   - **DNS names queried:** `-nr <file> -Y 'dns.flags.response==0' -T fields -e dns.qry.name | sort -u`.
-  - **TLS SNI (where it connects even when encrypted):** `-Y 'tls.handshake.type==1' -T fields -e ip.dst -e tls.handshake.extensions_server_name | sort -u`.
+  - **TLS SNI (where it connects even when encrypted):** `-Y 'tls.handshake.type==1' -T fields -e ip.dst -e ipv6.dst -e tls.handshake.extensions_server_name | sort -u`.
   - **External** = any address outside RFC1918, loopback, link-local and multicast.
-  - **Cleartext:** `-Y 'http.request||ftp||telnet||smtp||imap||pop||tftp||mqtt'`
-    for application data in the clear; list unencrypted DNS, NTP and mDNS
-    separately as metadata, not secrets.
-  - **Credentials in the clear:** count only (`-Y http.authorization | wc -l`);
-    never print the field. Report that N requests carried an auth header, with the
+  - **Cleartext:** which hosts and ports carried application data in the clear,
+    with the default output (which prints payload summaries) suppressed:
+    `-Y 'http.request||ftp||telnet||smtp||imap||pop||tftp||mqtt' -T fields -e ip.dst -e ipv6.dst -e tcp.dstport -e _ws.col.Protocol | sort | uniq -c`.
+    List unencrypted DNS, NTP and mDNS separately as metadata, not secrets.
+  - **Credentials in the clear:** count only, e.g.
+    `-Y 'http.authorization || http.cookie || ftp.request.command=="PASS"' -T fields -e frame.number | wc -l`;
+    never print the field. Report that N requests carried credentials, with the
     hosts, not the values.
+  - **Rule:** never run `tshark -Y` without `-q` or `-T fields` (the default output
+    prints packet summaries, including credentials). Run it under `timeout`.
   Report the flows and fields you observed; a page of packets does not prove
   network completeness, and a capture is one session, not the app's whole behaviour.
 - **HAR** (browser export), JSON of requests/responses. Project only non-secret
@@ -43,9 +48,10 @@ A saved capture is just a file. Read it; do not replay or fetch from it.
 ## Live observation (approval-gated, isolated)
 
 Only when static evidence cannot answer the question, and section 6's conditions
-are met: approved, the artifact is owned, and it runs in a disposable VM or
-container, never the host with credentials, keys or signed-in sessions, and
-never a personal browser profile.
+are met: approved, the artifact is owned, and it runs in a disposable VM (a
+container is not enough for untrusted native code; SKILL.md section 6), never the
+host with credentials, keys or signed-in sessions, and never a personal browser
+profile.
 
 - **Run under a debugger in a sandbox.** Launch the target inside the isolated
   environment under `gdb`/`lldb` (or the platform debugger) to observe values

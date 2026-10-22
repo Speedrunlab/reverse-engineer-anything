@@ -52,7 +52,9 @@ process that runs unreviewed code at install time.
 | Java / JVM | `javap` (JDK), **CFR** or **Vineflower**, `jarsigner` | jdk; github.com/leibnitz27/cfr, github.com/Vineflower/vineflower | Disassemble and decompile `.class`/`.jar`. |
 | PyInstaller / pyc | `pyinstxtractor`, `pyi-archive_viewer` (PyInstaller), **pycdc**/`pycdas` | github.com/extremecoders-re/pyinstxtractor, github.com/zrax/pycdc | Unpack a PyInstaller exe and disassemble/decompile `.pyc`. |
 | macOS bundles / packages | `plutil`, `codesign`, `lipo`, `pkgutil` | built into macOS | Read Info.plist, entitlements, architectures, package signatures. |
-| Windows / Linux installers | `msitools` (`msiinfo`, `msiextract`), `innoextract`, `dpkg-deb`, `rpm2cpio`, `cabextract` | distro packages | Unpack installers and OS packages without running them. |
+| Windows / Linux installers | `msitools` (`msiinfo`, `msiextract`), `innoextract`, `unshield`, `cabextract`, `dpkg-deb`, `rpm`, `bsdtar` (libarchive) | distro packages | Unpack installers and OS packages without running them. |
+| macOS packages / signing | `xar`, `xcrun stapler`; `rcodesign` on Linux | Xcode command-line tools; github.com/indygreg/apple-platform-rs | Expand `.pkg`; check stapled notarisation; read Apple signatures off-Mac. |
+| Crash and core dumps | `gdb`, Breakpad `minidump_stackwalk`, `atos` (macOS) or `llvm-symbolizer` | distro packages; chromium.googlesource.com/breakpad; LLVM | Post-mortem backtraces and symbolication; never `run`. |
 | SBOM / component scan | **syft** (+ `grype` or `osv-scanner` for vulns, DB staged) | github.com/anchore/syft | Inventory components. syft has no DB; `SYFT_CHECK_FOR_APP_UPDATE=false` stops its only network call. |
 | Android | **apktool**, **JADX**, `aapt2` | github.com/iBotPeaches/Apktool, github.com/skylot/jadx | apktool for resources/manifest, JADX for Java/Kotlin. |
 | JavaScript / Electron | `@electron/asar`, `prettier` (formatting), the `source-map` package | npm (pinned, `--ignore-scripts`) | Extract ASAR, then format and map back. |

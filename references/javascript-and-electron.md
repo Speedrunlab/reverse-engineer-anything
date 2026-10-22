@@ -13,7 +13,7 @@ JavaScript, in `resources/app.asar` (Windows/Linux) or
 - Locate `app.asar` inside the installed app or the package you extracted. From
   an installer, unpack without running it: a DMG or NSIS `.exe` with `7zz x`, an
   AppImage with `unsquashfs` or `7zz` (see the firmware and archives guide).
-- Extract it into `work/extracted/`: `asar extract app.asar <outdir>` (from
+- Extract it into `$W/extracted/`: `asar extract app.asar <outdir>` (from
   the pinned `@electron/asar`). `asar list app.asar` first to see the tree
   cheaply.
 - The entry point is in the extracted `package.json` (`main`). Start there.
@@ -31,12 +31,13 @@ read only what the question needs.
   original file/line with a source-map consumer. A map that references original
   source paths tells you the project structure directly.
 - **No map:** format the bundle to restore structure, then read it. Run the
-  formatter with config and plugins off and on a copy in `work/scratch/`, because
+  formatter with config and plugins off and on a copy in `$W/scratch/`, because
   a formatter searches upward for `.prettierrc.js`/`prettier.config.js` and a
   `package.json` `"prettier"` key and will load a plugin a hostile bundle planted:
-  `prettier --no-config --no-editorconfig` run from the empty `work/scratch/`
+  `prettier --no-config --no-editorconfig` run from the empty `$W/scratch/`
   (Prettier 3 loads a plugin only when config names one, which `--no-config`
-  blocks), or js-beautify, which does no config lookup.
+  blocks), or js-beautify with `--config` pointing at an empty `{}` file (its CLI
+  otherwise reads a `.jsbeautifyrc` from parent directories).
   Bundlers leave module boundaries (webpack chunk ids, module wrappers) you can
   navigate.
 - Search before you read whole files: grep the beautified tree for the API, the
@@ -47,7 +48,7 @@ read only what the question needs.
 
 - **"What does it call home to"**: collect candidate hosts with
   `grep -rEoh 'wss?://[A-Za-z0-9.-]+|https?://[A-Za-z0-9.-]+' <tree> | sort -u >
-  work/out/hosts.txt`, then find the call sites: `fetch(`, `XMLHttpRequest`,
+  $W/out/hosts.txt`, then find the call sites: `fetch(`, `XMLHttpRequest`,
   `WebSocket`, `net.request`, `https.request`, axios/got, the auto-updater feed
   (`autoUpdater.setFeedURL`, `resources/app-update.yml`, `build.publish` in
   `package.json`), crash reporting and analytics settings, and any
@@ -76,5 +77,5 @@ read only what the question needs.
 - Dynamic `import()` and string-built requires mean the static call graph can be
   incomplete; bound negative claims ("no call to X found in the bundled modules
   searched").
-- An ASAR can have an `app.asar.unpacked` sibling holding native modules -
+- An ASAR can have an `app.asar.unpacked` sibling holding native modules:
   inventory both.
