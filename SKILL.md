@@ -238,8 +238,6 @@ needed tool is absent, say so and name the install step; do not auto-fetch it.
 
 ## CREDITS
 
-An independent, from-scratch skill by Speedrun AI Labs (speedrunlab.ai). The
-target-routing idea follows the pattern established by REA
-(`github.com/morluto/rea`, MIT); none of its text or code is used here. This
-skill depends on no external package or server, only the open-source tools you
-install yourself.
+Reverse Engineer Anything is written and maintained by Speedrun AI Labs
+(speedrunlab.ai). It depends on no external package or server, only the
+open-source tools you install yourself.

@@ -1,6 +1,6 @@
-# reverse-engineer-anything
+# Reverse Engineer Anything
 
-**Reverse engineer anything you're authorised to: a binary, a package, firmware, a mobile app, captured traffic, using standard open-source tools, with evidence discipline.**
+**Reverse Engineer Anything analyses any binary, package, firmware image, mobile app or captured traffic you are authorised to examine, using standard open-source tools and tying every finding to evidence.**
 
 Free and open source · MIT Licence · Built by [Speedrun AI Labs](https://www.speedrunlab.ai), Sydney, Australia
 
@@ -26,11 +26,9 @@ It is **self-contained and agent-agnostic**. It drives standard open-source tool
 
 ---
 
-## How it's different from REA
+## Why it is safe to hand to a whole team
 
-This skill is an independent, from-scratch take on the target-routing pattern that [REA](https://github.com/morluto/rea) (morluto, MIT) established. We audited REA, found it clean, and then wrote our own, **none of its text or code is used here**, with three deliberate changes for team-wide safety:
-
-1. **No bundled tool server and no auto-install.** REA is built around its `rea-agents` MCP package fetched with `npx -y …@latest`. Ours drives tools you install yourself, at pinned versions, verified. Nothing auto-fetches, and nothing edits your agent config.
+1. **No bundled tool server and no auto-install.** It drives open-source tools you install yourself, at pinned versions, verified. Nothing auto-fetches code, and nothing edits your agent's configuration.
 2. **An explicit authorisation & scope gate** and **safe-sample handling** up front, suited to a regulated environment.
 3. **Agent-agnostic**: it names no proprietary tool layer; it maps to whatever terminal and file tools your agent already has.
 
