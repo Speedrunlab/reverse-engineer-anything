@@ -60,7 +60,7 @@ A common and high-value task: what changed between two releases.
   (each line is one link and its target, sorted, so extraction order does not matter),
   then `diff` the two `.txt` files into `$W/out/`.
 - **Summary first.** `"$W/scripts/run.sh" diff -rq --no-dereference "$W/v1.2/extracted"
-  "$W/v1.3/extracted" > "$W/out/diff-files.txt"` lists which files changed (exit 0:
+  "$W/v1.3/extracted" > "$W/out/diff-files-<name>.txt"` lists which files changed (exit 0:
   no differences; 1: differences found, the normal result; 2: an error); then
   `diff -u` one file at a time into `$W/out/`, reading with `head`. Never pour a
   whole-tree diff into your context.

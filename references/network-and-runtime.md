@@ -17,8 +17,8 @@ A saved capture is just a file. Read it; do not replay or fetch from it.
   payloads:
   - **Hosts and protocols:** `-q -z conv,ip -z conv,ipv6` and `-q -z conv,tcp -z conv,udp`
     (`conv,ip` alone misses IPv6 and would make a "no external host" claim wrong).
-  - **DNS names queried:** `-nr <file> -Y 'dns.flags.response==0' -T fields -e dns.qry.name | sort -u > "$W/out/dns.txt"`.
-  - **TLS SNI (where it connects even when encrypted):** `-Y 'tls.handshake.type==1' -T fields -e ip.dst -e ipv6.dst -e tls.handshake.extensions_server_name | sort -u > "$W/out/sni.txt"`.
+  - **DNS names queried:** `-nr <file> -Y 'dns.flags.response==0' -T fields -e dns.qry.name | sort -u > "$W/out/dns-<name>.txt"`.
+  - **TLS SNI (where it connects even when encrypted):** `-Y 'tls.handshake.type==1' -T fields -e ip.dst -e ipv6.dst -e tls.handshake.extensions_server_name | sort -u > "$W/out/sni-<name>.txt"`.
   - Both go to files because a name label can carry encoded data; read them with
     `wc -l` and `cut -c1-120 <file> | cat -v`.
   - **External** = any address outside RFC1918, loopback, link-local, multicast,
@@ -46,7 +46,7 @@ A saved capture is just a file. Read it; do not replay or fetch from it.
     prints packet summaries, including credentials). Run it under `timeout`, and
     through `run.sh` with the filter passed as an argument and `pipefail` on, so a
     rejected filter is an error, not an empty file:
-    `"$W/scripts/run.sh" bash -c 'set -o pipefail; timeout 600 tshark -nr "$1" -Y "$2" -T fields -e dns.qry.name | sort -u > "$3"' _ <file> 'dns.flags.response==0' "$W/out/dns.txt"`.
+    `"$W/scripts/run.sh" bash -c 'set -o pipefail; timeout 600 tshark -nr "$1" -Y "$2" -T fields -e dns.qry.name | sort -u > "$3"' _ <file> 'dns.flags.response==0' "$W/out/dns-<name>.txt"`.
   Report the flows and fields you observed; a page of packets does not prove
   network completeness, and a capture is one session, not the app's whole behaviour.
 - **HAR** (browser export), JSON of requests/responses. Project only non-secret
@@ -57,7 +57,7 @@ A saved capture is just a file. Read it; do not replay or fetch from it.
   for the endpoints; count auth headers rather than printing them. Do not fetch
   the recorded URLs.
 - **Saved mitmproxy flows / SAZ**: read with the matching reader
-  (`mitmdump -n -r <flows> > "$W/out/flows.txt"`, read with targeted searches, since it prints full URLs; `-n` starts no proxy listener; never use replay options; a SAZ reader for Fiddler). Treat bodies
+  (`mitmdump -n -r <flows> > "$W/out/flows-<name>.txt"`, read with targeted searches, since it prints full URLs; `-n` starts no proxy listener; never use replay options; a SAZ reader for Fiddler). Treat bodies
   as recorded evidence, not live attribution.
 - **Never read a credential into context.** Captures carry cookies, tokens and
   auth headers. Select non-sensitive fields only (the projections above); report

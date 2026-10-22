@@ -58,12 +58,15 @@ read only what the question needs.
   LC_ALL=C grep -rEaoh -- "(wss?|https?)://[^/ \"'<>?#]+" "$1" | sed -E 's#//[^/]*@#//<cred>@#' | sort -u > "$2"
   ```
 
-  Run it as `"$W/scripts/run.sh" "$W/scripts/hosts.sh" "$ROOT" "$W/out/hosts.txt"`.
+  Run it as `"$W/scripts/run.sh" "$W/scripts/hosts.sh" "$ROOT" "$W/out/hosts-<name>.txt"`.
   Exit 0 is a result; exit 1 with an empty file means no URL matched; exit 2 is an
   error, never "no hosts". The user-info part, where keys such as a Sentry DSN key
   sit, is masked rather than mistaken for a host; a password containing `/`, `?`
-  or `#` can still leave a fragment, so name `hosts.txt` in the ledger as
-  secret-bearing. Then find the call sites: `fetch(`, `XMLHttpRequest`,
+  or `#` can still leave a fragment, so name `hosts-<name>.txt` in the ledger as
+  secret-bearing and never hand it over. The deliverable is the host-only list,
+  which keeps only well-formed host names:
+  `cut -d/ -f3 "$W/out/hosts-<name>.txt" | sed 's/^<cred>@//' | grep -E '^[A-Za-z0-9.-]+(:[0-9]+)?$' | LC_ALL=C sort -u > "$W/out/host-list-<name>.txt"`.
+  Then find the call sites: `fetch(`, `XMLHttpRequest`,
   `WebSocket`, `net.request`, `https.request`, axios/got, the auto-updater feed
   (`autoUpdater.setFeedURL`, `resources/app-update.yml`, `build.publish` in
   `package.json`), crash reporting and analytics settings, and any

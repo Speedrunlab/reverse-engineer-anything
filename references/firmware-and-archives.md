@@ -36,11 +36,13 @@ then route each payload.
 Unpack, never run. (`7zz` is official 7-Zip; `7z` is p7zip, either works for ZIP.)
 
 Every tool below gets an explicit output directory under `$W/extracted/<name>/`
-(their default is the current directory) and runs from a fresh `$W/scratch/<task>/`.
+(their default is the current directory) and runs from a fresh `$W/scratch/<task>/`,
+under the SKILL.md section 1 escape-check order. pyinstxtractor, which cannot
+take an output directory, is the one exception, handled below.
 
 - **General archive:** `7zz l -slt <archive>` to inventory and check paths, then
   `7zz x <archive> -o<$W/extracted/name>`.
-- **Windows MSI:** `msiinfo tables <f>.msi` then `msiinfo export <f>.msi <table> > "$W/out/msi-<table>.txt"`
+- **Windows MSI:** `msiinfo tables <f>.msi` then `msiinfo export <f>.msi <table> > "$W/out/msi-<name>-<table>.txt"`
   per table (tables can hold property values; query the files, never print them whole), and `msiextract -C <dir> <f>.msi` (msitools), or `lessmsi` on Windows;
   `7zz` sees MSI streams only by cryptic names, so prefer msitools. **Inno Setup:**
   `innoextract -d <dir>`. **NSIS:** `7zz x`. **InstallShield:** `unshield -d <dir>`.
@@ -48,7 +50,8 @@ Every tool below gets an explicit output directory under `$W/extracted/<name>/`
   Never `msiexec /a`.
 - **Linux packages:** `dpkg-deb -c <f>.deb | cat -v` (list), `-x <f>.deb <dir>` (files) and
   `-e <f>.deb <dir>` (the maintainer scripts; read, never run); `rpm -qp --scripts
-  <f>.rpm | cat -v` then `bsdtar -xf <f>.rpm -C <dir>` (bsdtar reads rpm directly, so no
+  <f>.rpm > "$W/out/rpm-scripts-<name>.txt"` (scriptlets can embed secrets: query
+  the file, read it with `cut -c1-200 | cat -v`) then `bsdtar -xf <f>.rpm -C <dir>` (bsdtar reads rpm directly, so no
   `cd` into the output is needed). The maintainer scripts are part of the review.
 - **macOS `.pkg`/`.dmg`:** `pkgutil --expand-full <f>.pkg <dir>` or `xar -xf <f>.pkg
   -C <dir>` for a pkg; `7zz x` for a dmg. Do not `hdiutil attach` (that mounts it).
@@ -56,16 +59,20 @@ Every tool below gets an explicit output directory under `$W/extracted/<name>/`
   (`strings -a -n 6 <exe> | grep -c -e MEIPASS -e PyInstaller`) and read the Python
   version from the embedded `python3NN.dll`/`libpython3.NN`. List members with
   `pyi-archive_viewer -l <exe>`. pyinstxtractor writes into the current directory,
-  so give it a fresh one and apply the section 1 caps:
-  `mkdir "$W/scratch/pyi-1" && cd "$W/scratch/pyi-1" && "$W/scripts/run.sh" timeout 600 python3 -I <path>/pyinstxtractor.py <abs exe>`
-  (through `run.sh`, so it is logged like every other tool).
-  Run the section 1 post-extraction check on its output, then move it to a new
-  extraction root (`mv` into `$W/extracted/pyi-1/`). It parses the archive's table
+  so its run directory is also its `$ROOT`: follow the section 1 escape-check order
+  (ledger entry, `mkdir "$W/scratch/pyi-1"`, wait, take T0, wait), then
+  `cd "$W/scratch/pyi-1" && "$W/scripts/run.sh" timeout 600 python3 -I <path>/pyinstxtractor.py <abs exe>`
+  (through `run.sh`, so it is logged like every other tool). Run the section 1
+  checks with `ROOT="$W/scratch/pyi-1"`, then move the output to a new extraction
+  root (`mv` into `$W/extracted/pyi-1/`) and apply the link step there. It parses the archive's table
   of contents with `marshal` (hostile data parsed in memory, not code run), one
   more reason it runs only in the section 1 environment. The entry script is the
   member that is not `pyiboot*` or `pyi_rth_*`. A bare `.pyc` may need its header
   prepended: 16 bytes for Python 3.7+, 12 for 3.3 to 3.6, 8 before that.
-  Disassemble with `pycdas`; decompile with `pycdc`, and if it fails (common on
+  Disassemble with `pycdas`; decompile with `pycdc`, both of which print to
+  stdout: redirect into their own new directory (`mkdir "$W/out/pycdc-<name>"`,
+  then `> "$W/out/pycdc-<name>/<member>.py"`), which is the `$ROOT` for the
+  section 1 checks. If `pycdc` fails (common on
   3.11+) report the disassembly and mark behaviour inferred. Never
   `marshal.load`/`import` an untrusted `.pyc` yourself.
 - **AppImage:** an ELF (type 2) with a squashfs appended. Its own
@@ -91,8 +98,14 @@ Every tool below gets an explicit output directory under `$W/extracted/<name>/`
 
 ## SQLite databases
 
-- Open a **copy** safely: `sqlite3 -readonly -init /dev/null copy.db`, then
-  `PRAGMA trusted_schema=OFF;` as the first statement. These are defence in depth:
+- Open a **working copy**, never `original/` (it is read-only, and SQLite cannot
+  open a WAL-mode file there): `cp` the database and any `-wal`/`-shm` that came
+  with it, names kept matched (`sample.db`, `sample.db-wal`), into a fresh
+  `$W/scratch/<task>/`, then
+  `"$W/scripts/run.sh" sqlite3 -readonly -init /dev/null <copy> 'PRAGMA trusted_schema=OFF;' '<query>'`,
+  each statement an argument so `run.sh` logs it. A WAL-mode database that came
+  without its `-wal` opens only as `'file:<abs copy>?immutable=1'`; say that
+  uncheckpointed transactions, if any, are not visible. These are defence in depth:
   `-init /dev/null` stops the CLI reading `~/.sqliterc`, and `trusted_schema=OFF`
   stops a view or trigger calling functions that are not marked safe (current CLIs
   already block their own `writefile()` there; older or custom builds may not).
@@ -102,9 +115,9 @@ Every tool below gets an explicit output directory under `$W/extracted/<name>/`
   virtual table (both can run functions). Select only the non-sensitive columns
   the question needs, with a `LIMIT`; never `SELECT *` a table that holds secrets.
 - A database in WAL mode has a `-wal` file holding committed transactions not yet
-  written back to the main file (`-shm` is only its index). Copy all of them
-  together, note whether you have a quiescent snapshot or a torn copy, and record
-  the identity of each file.
+  written back to the main file (`-shm` is only its index). They are one artifact
+  with the database: name them together at intake, hash each, copy them together,
+  and note whether you have a quiescent snapshot or a torn copy.
 - Redact: app databases hold tokens, messages and personal data. Report shape
   and the answer, not raw rows of personal content.
 
@@ -132,9 +145,9 @@ each DLL's version from its version resource (the `FileVersion` and
 `ProductVersion` strings, stored as UTF-16, so GNU `strings -a -e l`), one signal
 (medium). The PE header's image and linker versions are not file versions.
 
-Write the result to `$W/out/sbom.cdx.json` in CycloneDX form (name, version,
+Write the result to `$W/out/sbom-<name>.cdx.json` in CycloneDX form (name, version,
 path, detection method, confidence). If the operator has staged **syft**,
-`"$W/scripts/run.sh" syft dir:"$ROOT" -o cyclonedx-json="$W/out/syft.cdx.json"`
+`"$W/scripts/run.sh" syft dir:"$ROOT" -o cyclonedx-json="$W/out/syft-<name>.cdx.json"`
 cross-checks the manual pass, after the section 1 link step on that root (syft has
 no vulnerability DB; `SYFT_CHECK_FOR_APP_UPDATE=false`, set in `env.sh`, stops its
 only network call, and `TMPDIR` in `env.sh` keeps its temporary unpacking inside

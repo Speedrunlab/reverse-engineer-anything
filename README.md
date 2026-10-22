@@ -37,7 +37,7 @@ It is **self-contained and agent-agnostic**. It drives standard open-source tool
 
 ## Changelog
 
-See [CHANGELOG.md](CHANGELOG.md). Current version: 1.9.0.
+See [CHANGELOG.md](CHANGELOG.md). Current version: 1.10.0.
 
 ---
 

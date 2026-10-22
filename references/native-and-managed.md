@@ -148,8 +148,10 @@ a sample.
 
 - `unzip -l <jar> | cat -v` to inventory; read `META-INF/MANIFEST.MF` (Main-Class,
   versions) and any `META-INF/maven/**/pom.properties` for component versions.
-- `javap -c -p -v <Class>` disassembles bytecode and shows the constant pool.
-  Decompile with **CFR** (`java -jar cfr.jar --outputdir $W/out/cfr <jar>`, which
+- `javap -c -p -v <Class> > "$W/out/javap-<name>.txt"` disassembles bytecode and
+  the constant pool, where string constants (keys included) appear in full: name
+  the file secret-bearing and query it with `grep -c` and `grep -o ... | cut -c1-120`.
+  Decompile with **CFR** (`java -jar cfr.jar --outputdir $W/out/cfr-<name> <jar>`, which
   writes files instead of flooding stdout) or **Vineflower**; JADX also reads
   `.jar`. Treat decompiler output as a reconstruction.
 - A Spring Boot fat jar nests dependencies under `BOOT-INF/lib/*.jar`; those are
@@ -178,7 +180,7 @@ a sample.
   | sort -u > "$2"
   ```
 
-  Run it as `"$W/scripts/run.sh" "$W/scripts/endpoints.sh" "$ROOT" "$W/out/endpoints.txt"`,
+  Run it as `"$W/scripts/run.sh" "$W/scripts/endpoints.sh" "$ROOT" "$W/out/endpoints-<name>.txt"`,
   with `$ROOT` set to the tree searched: an extraction root, or a decompiler's
   output tree under `$W/out/`, which gets the same SKILL.md section 1 link step
   first. It masks URL user-info (including a password
@@ -186,9 +188,10 @@ a sample.
   Exit 1 with an empty file means nothing matched; exit 2 is an error (a missing
   tree, or no GNU sed), never "no endpoints". For a credential's location, list
   the files with `grep -rEl` and the same pattern. A token embedded in a
-  URL path (a webhook) cannot be detected generically, so treat `endpoints.txt` as
-  secret-bearing: keep it at mode 0600, report hosts
-  (`cut -d/ -f3 "$W/out/endpoints.txt" | sort -u | cat -v`) rather than full URLs, and report
+  URL path (a webhook) cannot be detected generically, so treat `endpoints-<name>.txt`
+  as secret-bearing (mode 0600, never handed over) and report hosts from the
+  host-only list rather than full URLs
+  (`cut -d/ -f3 "$W/out/endpoints-<name>.txt" | sed 's/^<cred>@//' | grep -E '^[A-Za-z0-9.-]+(:[0-9]+)?$' | LC_ALL=C sort -u > "$W/out/host-list-<name>.txt"`), and report
   a credential as file, key, type and length only (SKILL.md section 1).
 - Dependencies for an SBOM: the `pom.properties` groupId/artifactId/version, or
   hashes of bundled jars matched against the operator's known-set.

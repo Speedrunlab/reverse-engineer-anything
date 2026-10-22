@@ -58,8 +58,9 @@ high-entropy value. No prefixes, no raw values.>
 
 ## Notes
 
-<Chain of custody for nested payloads (what was carved from where), the ledger
-hash at close, where the evidence is retained, and anything a future pass should
+<Chain of custody for nested payloads (what was carved from where), where the
+evidence is retained (the ledger's closing hash is posted in the conversation,
+not here, because the ledger records this report's hash), and anything a future pass should
 know. A vulnerability found in third-party code is reported to the operator;
 disclosing it is the organisation's decision, not the analyst's. No raw
 credentials or personal data.>

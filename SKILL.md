@@ -4,7 +4,7 @@ description: "Reverse Engineer Anything: analyse shipped software you cannot rea
 license: MIT
 compatibility: Any agent with a terminal/shell tool and file read/write. Needs an operator-supplied analysis environment with no network and no credentials (a disposable VM for live work), the open-source tools in references/toolchain.md installed there, a working directory outside synced folders, and an approver independent of the requester.
 metadata:
-  version: 1.9.0
+  version: 1.10.0
   author: Speedrun AI Labs
   tags: reverse-engineering, binary-analysis, security-research, interoperability
 ---
@@ -36,7 +36,7 @@ is vague, ask again; never proceed on a guess.
 
 ### One intake message
 
-Ask for all of this in a single message:
+Ask, in a single message, for whatever the request does not already state:
 
 1. **Target(s):** one concrete artifact (a file path, a package, an image), or two
    or more named versions of it for a comparison. If the user says only "my app",
@@ -71,10 +71,13 @@ The **operator** is the human in this conversation who directs the work; their
 answers are recorded as attested, not independently verified. Recheck any expiry
 (`date -u`) at the start and before each live step.
 
-Subagents are static-only and read-only on `original/`. Each writes only under
-its own name: `$W/out/<name>/` (with its own `commands.log`), `$W/extracted/<name>-*/`
-and `$W/scratch/<name>-*/`. It receives the intake as context, not as approval; it
-runs no live step, its output is untrusted, and only the lead appends to the ledger.
+Subagents are static-only and read-only on `original/` and on every extraction
+root. The lead runs every extraction (decompilers included) itself, one at a time,
+under the section 1 escape check, and hands subagents the finished roots. Each
+subagent writes only under its own name, `$W/out/<name>/` (with its own
+`commands.log`) and `$W/scratch/<name>-*/`, and never while the lead is running an
+extraction. It receives the intake as context, not as approval; it runs no live
+step, its output is untrusted, and only the lead appends to the ledger.
 
 ### Order of operations
 
@@ -224,12 +227,14 @@ write a manifest of each side with this helper, saved as
 # manifest.sh <dir> <out-file>: per-file SHA-256 and link targets, paths relative to <dir>
 set -o pipefail; umask 077
 cd -- "$1" || exit 2
-{ find . -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256
-  find . -type l -exec sh -c 'for l; do printf "link %s -> %s\n" "$l" "$(readlink -- "$l")"; done' sh {} + | LC_ALL=C sort
+r=0
+{ find . -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 || r=1
+  find . -type l -exec sh -c 'for l; do printf "link %s -> %s\n" "$l" "$(readlink -- "$l")"; done' sh {} + | LC_ALL=C sort || r=1
 } > "$2"
+exit "$r"   # non-zero when any file could not be read or hashed
 ```
 
-Run it on the source and on the copy (`"$W/scripts/run.sh" "$W/scripts/manifest.sh" <dir> "$W/out/manifest-<source|copy>.txt"`,
+Run it on the source and on the copy (`"$W/scripts/run.sh" "$W/scripts/manifest.sh" <dir> "$W/out/manifest-<name>-<source|copy>.txt"`,
 the output path absolute); they match when `cmp` finds the two files identical.
 Paths are relative, so the manifest's SHA-256 is the same on any machine: that
 digest is the target's identity, and a finding about one file (the `app.asar`)
@@ -260,15 +265,19 @@ changed.
   reject any member whose path is absolute, contains `..`, or sits beneath an
   earlier symlink member; binwalk and unblob cannot list first, so give each its
   own fresh root and rely on the checks that follow. After **any** extraction,
-  count files (`find "$ROOT" | head -n 100001 | wc -l`) and stop at the cap; a
+  `chmod -R u+rwX "$ROOT"` (so no directory hides files from the count), then
+  count files (`find "$ROOT" | head -n 100001 | wc -l`, with `find` writing nothing
+  to stderr) and stop at the cap; a
   regular file or directory that resolves outside its root is a stop. Symlinks
   pointing out of the root are expected in filesystem images: they are recorded
   and neutralised by the next rule, not a stop.
 - **Check that nothing escaped.** An extractor can be tricked into writing outside
   its root (binwalk 2.3.3 and earlier did, CVE-2022-4510: use 2.3.4 or v3). An
   **extraction** here is any tool that writes files from sample content: an
-  unpacker, a carver, or a decompiler (JADX, ILSpy, CFR, apktool). Its output
-  directory, under `extracted/` or `out/`, is the `$ROOT` this check skips. With no
+  unpacker, a carver, or a decompiler (JADX, ILSpy, CFR, apktool, pycdc). Give it
+  its own new output directory (`mkdir`, under `extracted/` or `out/`; a tool that
+  prints to stdout is redirected into a file there); that directory is the `$ROOT`
+  this check skips. With no
   other worker writing: write the step's ledger entry first, create its run
   directory with `mkdir "$W/scratch/<task>"` (no `-p`, so a directory that already
   exists fails loudly), wait one second, take `T0=$(date -u '+%Y-%m-%d %H:%M:%S UTC')`
@@ -385,6 +394,9 @@ container's row first to unpack it (section 5), then the row for the question on
 the extraction root. Each row names
 the open-source tools and the reference guide to read before going deep. Read the
 guide for each layer you reach; the evidence guide (section 7) is always read.
+The guides show commands short: any guide command that prints text drawn from the
+sample is still run with its output sent to `$W/out/<tool>-<name>.txt` and read
+as section 4 item 7 says, whether or not the guide shows the redirect.
 
 | Target | First tools | Guide |
 |---|---|---|
@@ -506,11 +518,12 @@ Live analysis is off by default. Before any live work:
   the VM. What leaves is size-capped text over the operator's one-way channel, and
   it is untrusted like any other sample-derived data.
 - **Teardown.** When the session ends, stop everything it started; delete the
-  secret-bearing `out/` files the ledger names; append the teardown entry,
-  recording both; then hash and export `ledger.md`, `commands.log`, `report.md`
-  and `out/` over the operator's channel and post the digests in the
-  conversation, all **before** you roll the VM back (the rollback erases them
-  otherwise).
+  secret-bearing `out/` files the ledger names; append the teardown entry, which
+  also holds the section 8 cleanup and data-handling records; then hash
+  `ledger.md`, `commands.log`, `report.md` and `out/` (directly, not through
+  `run.sh`, so the log does not change after its hash), post the digests, and
+  export exactly those files over the operator's channel, all **before** you roll
+  the VM back (the rollback erases them otherwise).
 
 Covered techniques and their isolation requirements are in
 [network and runtime](references/network-and-runtime.md): reading a recorded
@@ -541,7 +554,8 @@ Stop, record why in the ledger, and ask the operator when:
   the mode.
 
 Write the stop and its reason in the ledger. If no operator is reachable (an
-unattended run), write the stop entry and exit rather than proceeding.
+unattended run), write the stop entry and exit rather than proceeding (when the
+location checks failed, report it in the conversation only, section 0).
 
 ---
 
@@ -597,8 +611,9 @@ version-diffing, corroboration and verification workflows.
   `commands.log` are enough, and `report.md` is written only if the result will be
   filed. Use the full report template for work that spans several questions or that
   will be filed.
-- **Per-item results** (a permission-to-code map, an SBOM, a host list) are saved
-  as their own file in `$W/out/` (for example `$W/out/permissions.md`), hashed in
+- **Per-item results** (a permission-to-code map, an SBOM, the host-only list,
+  never the secret-bearing raw one) are saved
+  as their own file in `$W/out/` (for example `$W/out/permissions-<name>.md`), hashed in
   the ledger, and shown as the appendix whether or not `report.md` is written.
 - **Building from the findings.** When the user asks you to build something from
   what you learned, switch to normal coding tools, keep observed behaviour separate
@@ -608,8 +623,7 @@ version-diffing, corroboration and verification workflows.
 - **Deliverables.** Name and hash every file you hand over (report, ledger,
   `out/` artifacts such as an SBOM), so the operator can file them. A
   secret-bearing file the ledger names is never a deliverable.
-- **Retention and cleanup.** Hand the original, its digests, the ledger and the
-  report to the operator's evidence store. Delete working extractions and the
+- **Retention and cleanup**, in this order. Delete working extractions and the
   secret-bearing `out/` files the ledger names on completion, or on abort once
   the operator has answered the stop (they are its evidence until then), only by
   paths whose `realpath` is inside the working directory (no globs, no `sudo`;
@@ -618,7 +632,10 @@ version-diffing, corroboration and verification workflows.
   content to agent memory, notes, or synced stores. Never delete the original, the
   ledger or the report, and never leave a live session or sandbox running. Record
   the cleanup and the data-handling confirmation from section 0 item 5 in the
-  ledger, then post its SHA-256 (section 7) as the last step.
+  ledger. Then hash the ledger, `commands.log` and the report directly (not
+  through `run.sh`, which would change the log after its hash), post the digests
+  (section 7), and hand over exactly those files, with the original and its
+  digests, to the operator's evidence store.
 
 ---
 

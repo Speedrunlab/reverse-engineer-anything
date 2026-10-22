@@ -2,6 +2,34 @@
 
 Reverse Engineer Anything. Newest first.
 
+## v1.10.0 (23 Oct 2026)
+
+Hardening round 10, proven findings only (7 reproduced: 3 by running the
+command on a neutral test folder, 4 by quoting the conflicting passages).
+
+- SQLite: a WAL-mode database in the read-only `original/` cannot be opened
+  ("unable to open database file", reproduced with sqlite3 3.54). Open a working
+  copy, with its `-wal`/`-shm`, in a fresh scratch directory, SQL passed as
+  arguments so `run.sh` logs it; `immutable=1` when the `-wal` is missing. The
+  database and its `-wal`/`-shm` are one artifact.
+- A decompiler that prints to stdout (pycdc) gets its own output directory as
+  `$ROOT`; its output in `out/` was tripping the escape scan (reproduced). The
+  PyInstaller recipe follows the escape-check order.
+- Subagents run no extraction: the lead runs every extraction, one at a time,
+  and hands over finished roots.
+- Secrets kept off screen: `bundletool dump manifest`, `javap -v` and
+  `rpm --scripts` go to files; any guide command that prints sample text is run
+  with its output redirected, shown or not.
+- Every `out/` file carries the target name; the raw host and endpoint lists are
+  secret-bearing and never handed over, and a host-only list (well-formed names
+  only, tested) is the deliverable.
+- `manifest.sh` exits non-zero when a file cannot be hashed (it exited 0;
+  reproduced); the file count runs after `chmod -R u+rwX` (a mode-000 directory
+  hid files; reproduced); close-out and live teardown record everything, hash
+  outside `run.sh`, then hand over exactly the hashed files; the report template
+  no longer holds the ledger's closing hash; intake asks only what the request
+  does not state.
+
 ## v1.9.0 (23 Oct 2026)
 
 Hardening round 9, the first under the rule that a finding counts only once it

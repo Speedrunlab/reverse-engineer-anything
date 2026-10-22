@@ -68,7 +68,8 @@ The manifest answers a lot before any code:
   `aapt2` take APKs: convert first with
   `bundletool build-apks --bundle=<app>.aab --output=<$W/out/app>.apks --mode=universal`,
   then `7zz x <app>.apks -o<$W/extracted/apks>` to get `universal.apk` (or read
-  the manifest with `bundletool dump manifest --bundle=<app>.aab`). JADX opens an
+  the manifest with `bundletool dump manifest --bundle=<app>.aab > "$W/out/aab-manifest-<name>.xml"`,
+  searched with the tag grep above, never read whole). JADX opens an
   `.aab` directly. The converted APK is signed with a debug key if one exists, or
   left unsigned (with the sandboxed `HOME` there is none), so its signature says
   nothing about who published the app; read signing from the original.
