@@ -4,7 +4,8 @@ Reverse Engineer Anything. Newest first.
 
 ## v1.11.0 (23 Oct 2026)
 
-Hardening round 11, proven findings only (6 reproduced). One finding was left
+Hardening round 11, proven findings only (4 medium findings reproduced, plus
+low ones fixed alongside). One finding was left
 unproven and unchanged: that Ghidra headless writes its log and settings under
 the sandboxed HOME on every run and so trips the escape scan (Ghidra is not
 installed on the build host).
