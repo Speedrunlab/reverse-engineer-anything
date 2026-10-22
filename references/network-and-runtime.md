@@ -21,26 +21,37 @@ A saved capture is just a file. Read it; do not replay or fetch from it.
   - **TLS SNI (where it connects even when encrypted):** `-Y 'tls.handshake.type==1' -T fields -e ip.dst -e ipv6.dst -e tls.handshake.extensions_server_name | sort -u > "$W/out/sni.txt"`.
   - Both go to files because a name label can carry encoded data; read them with
     `wc -l` and `cut -c1-120 <file> | cat -v`.
-  - **External** = any address outside RFC1918, loopback, link-local and multicast.
+  - **External** = any address outside RFC1918, loopback, link-local, multicast,
+    0.0.0.0/8, 255.255.255.255, 100.64.0.0/10 (carrier NAT) and, for IPv6, `::1`,
+    `fe80::/10`, `fc00::/7` and `ff00::/8`. The `conv` tables count both
+    directions: "the device contacted X" needs the device as the initiator (its SYN,
+    or its first packet to X).
   - **Cleartext:** which hosts and ports carried application data in the clear,
     with the default output (which prints payload summaries) suppressed:
     `-Y '(tcp.flags.syn==1 && tcp.flags.ack==0) && (tcp.dstport in {21 23 25 80 110 143 1883 8080})' -T fields -e ip.dst -e ipv6.dst -e tcp.dstport | sort | uniq -c`
     (client SYNs only, so the destination is the server, not an ephemeral client
     port), plus `-Y 'udp.dstport==69' -T fields -e ip.dst -e ipv6.dst | sort -u` for TFTP.
-    List unencrypted DNS, NTP and mDNS separately as metadata, not secrets.
+    List unencrypted DNS, NTP and mDNS separately as metadata, not secrets. Also
+    read the cleartext protocols (http, ftp, telnet, smtp, pop, imap, mqtt) from the
+    `io,phs` hierarchy, which catches them on other ports. Neither filter sees a
+    flow that began before the capture or an unknown protocol on an unlisted port:
+    bound a "no cleartext" claim to that.
   - **Credentials in the clear:** count only, e.g.
-    `-Y 'http.authorization || http.cookie || ftp.request.command=="PASS"' -T fields -e frame.number | wc -l`;
-    never print the field. Report that N requests carried credentials, with the
-    hosts, not the values. This count covers HTTP and FTP only: for other
+    `-Y 'http.authorization || http.cookie || ftp.request.command=="PASS"' -T fields -e ip.dst -e ipv6.dst | sort | uniq -c`
+    (a count per destination host); never print the field. Report that N requests
+    carried credentials, with the hosts, not the values. This count covers HTTP and FTP only: for other
     cleartext protocols in the list above (POP, IMAP, SMTP, Telnet, MQTT), report
     "credentials may be present in clear" for each host rather than a count.
   - **Rule:** never run `tshark -Y` without `-q` or `-T fields` (the default output
-    prints packet summaries, including credentials). Run it under `timeout`.
+    prints packet summaries, including credentials). Run it under `timeout`, and
+    through `run.sh` with the filter passed as an argument and `pipefail` on, so a
+    rejected filter is an error, not an empty file:
+    `"$W/scripts/run.sh" bash -c 'set -o pipefail; timeout 600 tshark -nr "$1" -Y "$2" -T fields -e dns.qry.name | sort -u > "$3"' _ <file> 'dns.flags.response==0' "$W/out/dns.txt"`.
   Report the flows and fields you observed; a page of packets does not prove
   network completeness, and a capture is one session, not the app's whole behaviour.
 - **HAR** (browser export), JSON of requests/responses. Project only non-secret
   fields rather than reading raw headers into context:
-  `jq -r '.log.entries[] | (.request.method+" "+(.request.url|sub("^[a-z]+://([^/?#]*@)?";"")|split("/")[0]|split("?")[0]|split("#")[0]))' <file> | sort -u`
+  `jq -r '.log.entries[] | (.request.method+" "+(.request.url|sub("^[a-z]+://([^/?#]*@)?";"")|split("/")[0]|split("?")[0]|split("#")[0]))' <file> | sort -u | cat -v`
   (method and host only: user-info, path, query and fragment, where tokens sit,
   are dropped, including a query with no path before it)
   for the endpoints; count auth headers rather than printing them. Do not fetch

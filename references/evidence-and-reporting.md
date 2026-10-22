@@ -56,7 +56,8 @@ A common and high-value task: what changed between two releases.
   supports it (GNU diffutils 3.3+; the macOS BSD `diff` may not, so run diffs in
   the Linux VM).
 - Compare the two link records as well, since a retargeted link is a change the
-  file diff cannot show: for each version, `tr '\0' '\n' < "$W/<version>/out/links-<name>.nul" | sed "s|^$W/<version>/extracted/<name>/||" > "$W/<version>/out/links-<name>.txt"`,
+  file diff cannot show: for each version, `tr '\0' '\n' < "$W/<version>/out/links-<name>.nul" | sed "s|^$W/<version>/extracted/<name>/||" | paste - - | LC_ALL=C sort > "$W/<version>/out/links-<name>.txt"`
+  (each line is one link and its target, sorted, so extraction order does not matter),
   then `diff` the two `.txt` files into `$W/out/`.
 - **Summary first.** `"$W/scripts/run.sh" diff -rq --no-dereference "$W/v1.2/extracted"
   "$W/v1.3/extracted" > "$W/out/diff-files.txt"` lists which files changed (exit 0:

@@ -13,7 +13,7 @@ The manifest answers a lot before any code:
   (never an existing directory: apktool refuses one, and `-f` would delete it).
 - Search the decoded `AndroidManifest.xml` rather than reading it whole, because
   `<meta-data>` values can hold API keys:
-  `grep -nE '<(manifest|uses-permission|permission|activity|activity-alias|service|receiver|provider|application|intent-filter|action)([ >/]|$)' <outdir>/AndroidManifest.xml > "$W/out/manifest-tags.txt"`.
+  `grep -nE '<(manifest|uses-permission|permission|activity|activity-alias|service|receiver|provider|application|intent-filter|action)([ >/]|$)' <outdir>/AndroidManifest.xml > "$W/out/manifest-tags-<name>.txt"`.
   apktool writes one element per line, so each line is a whole tag (not cut,
   because the `<application>` line carries every flag) and `<meta-data>` is left
   out; read the file with `cat -v`. Count `<meta-data>` entries; report their
@@ -23,10 +23,10 @@ The manifest answers a lot before any code:
   them into `apktool.yml` under `sdkInfo`), and the `<application>` flags `android:debuggable` and `android:usesCleartextTraffic`.
   Exported components and broad permissions are where behaviour and attack
   surface concentrate.
-- `aapt2 dump badging <app>.apk > "$W/out/badging.txt"` gives a quick summary
+- `aapt2 dump badging <app>.apk > "$W/out/badging-<name>.txt"` gives a quick summary
   (package, version, permissions, launchable activity) without a full decode. It
   also prints `meta-data` values, so read it with
-  `grep -v '^meta-data' "$W/out/badging.txt" | cut -c1-200 | cat -v`.
+  `grep -v '^meta-data' "$W/out/badging-<name>.txt" | cut -c1-200 | cat -v`.
 
 ## Code
 

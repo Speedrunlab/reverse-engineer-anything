@@ -46,9 +46,9 @@ Every tool below gets an explicit output directory under `$W/extracted/<name>/`
   `innoextract -d <dir>`. **NSIS:** `7zz x`. **InstallShield:** `unshield -d <dir>`.
   **CAB:** `cabextract -d <dir>`. **MSIX/AppX:** unzip and read `AppxManifest.xml`.
   Never `msiexec /a`.
-- **Linux packages:** `dpkg-deb -c <f>.deb` (list), `-x <f>.deb <dir>` (files) and
+- **Linux packages:** `dpkg-deb -c <f>.deb | cat -v` (list), `-x <f>.deb <dir>` (files) and
   `-e <f>.deb <dir>` (the maintainer scripts; read, never run); `rpm -qp --scripts
-  <f>.rpm` then `bsdtar -xf <f>.rpm -C <dir>` (bsdtar reads rpm directly, so no
+  <f>.rpm | cat -v` then `bsdtar -xf <f>.rpm -C <dir>` (bsdtar reads rpm directly, so no
   `cd` into the output is needed). The maintainer scripts are part of the review.
 - **macOS `.pkg`/`.dmg`:** `pkgutil --expand-full <f>.pkg <dir>` or `xar -xf <f>.pkg
   -C <dir>` for a pkg; `7zz x` for a dmg. Do not `hdiutil attach` (that mounts it).

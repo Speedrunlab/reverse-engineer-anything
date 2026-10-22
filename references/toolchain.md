@@ -64,7 +64,7 @@ process that runs unreviewed code at install time.
 | Firmware / packed | **binwalk**, **unblob**, `7zz`, `unsquashfs` | github.com/ReFirmLabs/binwalk, github.com/onekey-sec/unblob, 7-zip.org | Carve embedded filesystems and blobs. `7zz` is official 7-Zip; `7z` is p7zip. |
 | WebAssembly | **WABT** (`wasm2wat`, `wasm-objdump`) | github.com/WebAssembly/wabt | Text form and section inventory; `wasm-decompile` only in WABT 1.0.41 and earlier. |
 | Network captures | **Wireshark**/`tshark`, **mitmproxy** | wireshark.org, mitmproxy.org | Read saved pcap/HAR/flows; capture only in a controlled env. |
-| SQLite | `sqlite3` | sqlite.org | Open a **copy** read-only (`sqlite3 -readonly copy.db`). |
+| SQLite | `sqlite3` | sqlite.org | Open a **copy** read-only, as the firmware and archives guide shows (`-readonly -init /dev/null`, `trusted_schema=OFF`). |
 | Model files | format header readers (GGUF/safetensors), `strings` | per-format | Read metadata; do not load weights to "inspect". |
 
 ## Keeping it safe for the whole organisation

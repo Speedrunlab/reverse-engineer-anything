@@ -4,7 +4,7 @@ description: "Reverse Engineer Anything: analyse shipped software you cannot rea
 license: MIT
 compatibility: Any agent with a terminal/shell tool and file read/write. Needs an operator-supplied analysis environment with no network and no credentials (a disposable VM for live work), the open-source tools in references/toolchain.md installed there, a working directory outside synced folders, and an approver independent of the requester.
 metadata:
-  version: 1.7.0
+  version: 1.8.0
   author: Speedrun AI Labs
   tags: reverse-engineering, binary-analysis, security-research, interoperability
 ---
@@ -90,7 +90,8 @@ A stop at steps 2 to 4 happens before the ledger exists. If the location checks
 passed, write ledger entry 1 as usual (`prev: genesis`, section 7) with whatever
 it can hold, the intake, the setup completed and the stop with its reason; if
 they failed, write nothing in `$W` and report the stop in the conversation only.
-Either way, tell the operator why and wait for their answer (section 6A).
+Either way, tell the operator why and wait for their answer (section 6A). If
+work resumes, the setup and identity that entry lacks go in the next entry.
 
 ---
 
@@ -169,8 +170,10 @@ reach the exported log. A subagent sets `RUN_LOG=$W/out/<name>/commands.log`.
 `run.sh` logs one command, so wrap a pipeline whole, keeping every stage on record:
 `"$W/scripts/run.sh" bash -c 'strings -a -n 6 -- "$1" | grep -Eci openssl' _ "$W/original/sample.so"`
 (the sample path is passed as an argument, never pasted into the script text).
-A guide command shown without the wrapper is still run through `run.sh`; a
-pipeline whose patterns contain quotes is saved as a helper script instead.
+A guide command shown without the wrapper is still run through `run.sh`. When a
+pipeline's filter or pattern contains quotes, pass it as an argument (`"$2"`)
+rather than inside the script text, as the network guide shows for `tshark`; save
+it as a helper script only when that is not enough.
 
 ### Preflight
 
@@ -255,23 +258,33 @@ also cites that file's own line.
   pointing out of the root are expected in filesystem images: they are recorded
   and neutralised by the next rule, not a stop.
 - **Check that nothing escaped.** An extractor can be tricked into writing outside
-  its root (binwalk 2.3.3 and earlier did, CVE-2022-4510: use 2.3.4 or v3). Before
-  each extraction `: > "$W/scratch/<task>.start"`, with no other worker writing;
-  after it, both must hold or it is a stop:
+  its root (binwalk 2.3.3 and earlier did, CVE-2022-4510: use 2.3.4 or v3). An
+  **extraction** here is any tool that writes files from sample content: an
+  unpacker, a carver, or a decompiler (JADX, ILSpy, CFR, apktool). Its output
+  directory, under `extracted/` or `out/`, is the `$ROOT` this check skips. With no
+  other worker writing, create its run directory with `mkdir "$W/scratch/<task>"`
+  (no `-p`, so a directory that already exists fails loudly), wait one second, and
+  record the time `T0=$(date -u '+%Y-%m-%d %H:%M:%S UTC')` in the ledger. After
+  the tool finishes, all three must hold or it is a stop:
   1. `shasum -a 256 -c "$W/scripts/SHA256SUMS"` reports every script `OK`;
-  2. this scan of the whole working directory exits 0 and prints nothing:
+  2. this scan of the whole working directory, with the recorded `T0` pasted in as
+     a literal, exits 0 and prints nothing:
 
      ```sh
-     find "$W" \( -path "$ROOT" -o -path "$W/scratch" -o -path "$W/home/tmp" -o -path "$W/home/.cache" \) -prune \
-       -o -type f -cnewer "$W/scratch/<task>.start" ! -name commands.log -print
+     find "$W" \( -path "$ROOT" -o -path "$W/scratch/<task>" -o -path "$W/home/tmp" \) -prune \
+       -o ! -type d -newerct "<T0>" ! -name commands.log -print
      ```
 
-  The scan skips only the new root, `scratch/`, the temp and cache folders and the
-  command logs, so a write into the ledger, `out/`, `original/`, another root or a
-  code-loading path under the sandboxed HOME is caught. It tests change time
-  (`-cnewer`) because an archive can backdate a file's modification time. A hit
-  that is a tool's own first-run file (apktool's framework, for example) is still
-  a stop: the operator clears it, and the ledger records that.
+  3. `find "$W/home/tmp" -mindepth 1 -delete` empties the temp folder, so nothing
+     a tool left there is loaded later.
+
+  The scan skips only this tool's root, its run directory, the temp folder and the
+  command logs. It tests change time (`-newerct`) against a recorded time, not a
+  file a hostile archive could rewrite, because an archive can backdate a file's
+  modification time; `! -type d` also catches a planted symlink, such as one at
+  `ledger.md`. A hit that is a tool's own first-run file (apktool's framework, for
+  example) is still a stop: the operator clears it, and the ledger records that.
+  The time format above is the one GNU and BSD `find` both accept.
 - **Neutralise links before any recursive read.** Filesystem images legitimately
   contain symlinks, hard links and device nodes. Before `grep -r`, `diff -r`, a
   tree-wide `shasum`, `syft` or any batch read of a root:
@@ -283,10 +296,11 @@ also cites that file's own line.
 
      ```sh
      export LINKS="$W/out/links-<name>.nul"   # a comparison: "$W/<version>/out/links-<name>.nul"
+     [ -d "${ROOT:?set ROOT}" ] || { echo "no such root" >&2; exit 2; }
      find "$ROOT" -type l -exec sh -c '
        for l; do
          t=$(readlink -- "$l")
-         printf "%s\0%s\0" "$l" "$t" >> "$LINKS"
+         printf "%s\0%s\0" "$l" "$t" >> "$LINKS" || exit 1   # no record, no removal
          case "$t" in
            /*|..|../*|*/../*|*/..) rm -f -- "$l" && : > "$l" ;;
          esac
@@ -297,8 +311,8 @@ also cites that file's own line.
      by an empty regular file (`: >` runs only after `rm`, so it never writes
      through a link), even when it would resolve inside the root; only a relative
      link with no `..` is kept. The record keeps every link and its target, so an
-     inventory can still use them. Confirm it worked; this must print `0`, or it
-     is a stop:
+     inventory can still use them. Confirm it worked (with `$ROOT` still a
+     directory, as checked above); this must print `0`, or it is a stop:
      `find "$ROOT" -type l -exec sh -c 'for l; do case "$(readlink -- "$l")" in /*|..|../*|*/../*|*/..) echo BAD;; esac; done' sh {} + | wc -l`
   2. Skip device nodes. Never use `grep -R`, `find -L`, `cp -L`, or `diff` without
      `--no-dereference`.
@@ -402,8 +416,9 @@ Depth costs time and tokens; spend it only where the question needs it.
 4. **Batch around a hypothesis.** Group related lookups to test one idea, then
    expand only where the result leaves a concrete gap.
 5. **Parallelise independent questions.** When several questions do not depend
-   on one another and workers are available, give each a distinct scope, ledger
-   entry 1 and a pointer to the shared evidence, and have each return
+   on one another and workers are available, give each a distinct scope, the
+   ledger entries holding the intake and identity, and a pointer to the shared
+   evidence, and have each return
    sources, conclusions and gaps.
 6. **When a tool is missing or fails.** Missing: report it, name the install step
    (`references/toolchain.md`), use one documented fallback if there is one, and
@@ -548,8 +563,9 @@ report from it.
   `SKILL.md`; the SHA-256 of `env.sh` and `run.sh`; the preflight results; the
   sample's real name, size and the matching SHA-256 of original and copy; the
   analyst and the host. The raw command log is `$W/commands.log`, written by
-  `run.sh` (section 1), never retyped. At close, post the ledger's SHA-256 in the
-  conversation for the operator to file.
+  `run.sh` (section 1), never retyped. At close, after the section 8 cleanup is
+  recorded, post the ledger's SHA-256 in the conversation for the operator to
+  file; it is the last thing written.
 - **Close the loop.** Revisit the original question list; mark each answered,
   partial, or unresolved by its evidence. Do not call a broad investigation
   complete while required questions are open.
@@ -579,10 +595,13 @@ version-diffing, corroboration and verification workflows.
   `out/` artifacts such as an SBOM), so the operator can file them. A
   secret-bearing file the ledger names is never a deliverable.
 - **Retention and cleanup.** Hand the original, its digests, the ledger and the
-  report to the operator's evidence store. Delete working extractions on
-  completion, or on abort once the operator has answered the stop (they are its
-  evidence until then), only by paths whose `realpath` is inside the working
-  directory (no globs, no `sudo`). Never write sample-derived content to agent
+  report to the operator's evidence store. Delete working extractions and the
+  secret-bearing `out/` files the ledger names on completion, or on abort once
+  the operator has answered the stop (they are its evidence until then), only by
+  paths whose `realpath` is inside the working directory (no globs, no `sudo`;
+  `chmod -R u+w` an extraction root first, since its read-only directories would
+  make `rm` fail), and confirm each path is gone. Record the cleanup in the
+  ledger, then post its SHA-256 (section 7). Never write sample-derived content to agent
   memory, notes, or synced stores. Never delete the original, the ledger or the
   report, and never leave a live session or sandbox running. Record the data-
   handling confirmation from section 0 item 5.
