@@ -17,7 +17,9 @@ decompile anything:
   targeted `grep -o ... | cut -c1-120 | sort -u` (SKILL.md section 4). Bound your
   conclusions to what you searched.
 - Imports / exports, what it calls out to, and what it offers:
-  - ELF: `readelf -d`, `objdump -T`, `nm -D`.
+  - ELF: `readelf -d`, `objdump -T`, `nm -D` (the dynamic table only). For a
+    statically linked binary use `nm <bin>` or `readelf -s <bin>` (the full symbol
+    table; empty output means stripped).
   - Mach-O: `otool -L` (linked libs), `otool -l`, `nm`.
   - PE: `objdump -x`, or a PE reader for the import/export tables.
 - Sections and layout: `readelf -S` / `objdump -h`. An unexpected section, an
@@ -42,7 +44,11 @@ On macOS, `readelf` and `nm -D` are not installed by default: use `llvm-readelf`
     file itself, printing only the name and version, never the whole line:
     `"$W/scripts/run.sh" bash -c 'strings -a -n 6 -- "$1" | grep -Eio "(openssl|libressl|boringssl|mbed ?tls|wolfssl|gnutls|libgcrypt|libsodium)[ /_-]?v?[0-9][0-9a-z.]*" | sort -u | cat -v' _ <bin>`.
   - Confidence: a version string inside the file plus calls into its routines is
-    high; a string alone is medium (it may be vendored but unused, or stale).
+    high; a string alone is medium (it may be vendored but unused, or stale). To
+    show calls in a static binary, find the library's own functions (its symbols,
+    or when stripped its error and function-name strings) and follow their
+    cross-references to callers in Ghidra; a reference to the version string only
+    reaches the library's version function.
 - **What does it export or import?** The symbol and import tables above; record
   them to `$W/out/` and answer from the file.
 - **Is it signed, and by whom?** `codesign -dvvv` (Mach-O); for PE, a signature
@@ -167,7 +173,7 @@ a sample.
   set -o pipefail; umask 077
   SED="${SED:-sed}"
   "$SED" --version >/dev/null 2>&1 || { echo "endpoints.sh: needs GNU sed" >&2; exit 2; }
-  grep -rEoh -- "((https?|wss?|amqps?|rediss?|ldaps?|mongodb(\+srv)?|jdbc:[a-z0-9:]+)://[^ \"'<>]+|jdbc:oracle:thin:[^ \"'<>]+)" "$1" \
+  LC_ALL=C grep -rEaoh -- "((https?|wss?|amqps?|rediss?|ldaps?|mongodb(\+srv)?|jdbc:[a-z0-9:]+)://[^ \"'<>]+|jdbc:oracle:thin:[^ \"'<>]+)" "$1" \
   | "$SED" -E "s#//[^/?# \"']*@#//<cred>@#g; s#(thin:)[^@ \"']*@#\1<cred>@#g; s/((pass(word|wd)?|pwd|secret|token|api_?key|access_?key|access_token|client_secret|key|sig(nature)?|auth)=)[^&; \"']*/\1<redacted>/Ig" \
   | sort -u > "$2"
   ```

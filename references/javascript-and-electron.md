@@ -55,7 +55,7 @@ read only what the question needs.
   #!/usr/bin/env bash
   # hosts.sh <tree> <out-file>: candidate hosts, user-info masked
   set -o pipefail; umask 077
-  grep -rEoh -- "(wss?|https?)://[^/ \"'<>?#]+" "$1" | sed -E 's#//[^/]*@#//<cred>@#' | sort -u > "$2"
+  LC_ALL=C grep -rEaoh -- "(wss?|https?)://[^/ \"'<>?#]+" "$1" | sed -E 's#//[^/]*@#//<cred>@#' | sort -u > "$2"
   ```
 
   Run it as `"$W/scripts/run.sh" "$W/scripts/hosts.sh" "$ROOT" "$W/out/hosts.txt"`.

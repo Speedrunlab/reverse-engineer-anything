@@ -2,6 +2,33 @@
 
 Reverse Engineer Anything. Newest first.
 
+## v1.9.0 (23 Oct 2026)
+
+Hardening round 9, the first under the rule that a finding counts only once it
+is reproduced (a command run on a neutral test folder, or both conflicting
+passages quoted). Proven and fixed:
+
+- Escape-check timing. Writing T0 into the ledger made the scan flag the ledger
+  under GNU `find` (sub-second compare), and BSD `find` (whole-second compare)
+  missed a write made in T0's own second. Both reproduced. Now: ledger entry
+  first, wait, take T0 and keep it in the conversation, wait, run, then append
+  T0 and the result. Any failed section 1 check is a 6A stop.
+- The preflight's variable-name check printed a continuation line of a
+  multi-line value; it now reads only `NAME=` lines.
+- `hosts.sh` and `endpoints.sh` skipped files with NUL bytes (BSD grep printed
+  "Binary file ... matches" instead of the URL); they now use `LC_ALL=C grep -a`.
+- A statically linked ELF had no symbol command (`readelf -d`, `objdump -T` and
+  `nm -D` read only the dynamic table): `nm` / `readelf -s`, and how to show the
+  library's routines are called.
+
+Also: `chmod -R u+rwX` before the link step (a mode-000 directory gave a false
+"0"; reproduced) and the link check requires empty stderr; every `out/` file
+names its target; live teardown records deletions before hashing; a directory
+target is copied into an extraction root for batch reads; the 600-second cap is
+for unpackers, analysers run under an operator time budget; close-out records the
+data-handling confirmation before the final hash; Windows DLL versions come from
+the version resource.
+
 ## v1.8.0 (23 Oct 2026)
 
 Hardening round 8 (adversarial, fresh-reader), scope frozen. New commands were run

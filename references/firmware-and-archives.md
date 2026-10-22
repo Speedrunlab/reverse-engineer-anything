@@ -127,6 +127,11 @@ evidence to weakest, one ledger entry per method:
    filename alone is weak.
 4. **Licence files** under `/usr/share/doc`, `LICENSE`, `NOTICE`.
 
+For a Windows tree (an unpacked installer), methods 1 and 2 do not apply: take
+each DLL's version from its version resource (the `FileVersion` and
+`ProductVersion` strings, stored as UTF-16, so GNU `strings -a -e l`), one signal
+(medium). The PE header's image and linker versions are not file versions.
+
 Write the result to `$W/out/sbom.cdx.json` in CycloneDX form (name, version,
 path, detection method, confidence). If the operator has staged **syft**,
 `"$W/scripts/run.sh" syft dir:"$ROOT" -o cyclonedx-json="$W/out/syft.cdx.json"`
