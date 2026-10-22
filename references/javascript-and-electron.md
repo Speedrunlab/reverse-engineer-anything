@@ -9,8 +9,10 @@ archive). Static and read-only; cite the sample's SHA-256.
 An Electron app is a Chromium + Node shell wrapping your real target: the app's
 JavaScript, usually in `resources/app.asar` (or an unpacked `resources/app/`).
 
-- Locate `app.asar` inside the installed app or the package you extracted.
-- Extract it into the sample subfolder: `asar extract app.asar <outdir>` (from
+- Locate `app.asar` inside the installed app or the package you extracted. From
+  an installer, unpack without running it: a DMG or NSIS `.exe` with `7z x`, an
+  AppImage with `unsquashfs` or `7z` (see the firmware and archives guide).
+- Extract it into `work/extracted/`: `asar extract app.asar <outdir>` (from
   the pinned `@electron/asar`). `asar list app.asar` first to see the tree
   cheaply.
 - The entry point is in the extracted `package.json` (`main`). Start there.
@@ -36,10 +38,17 @@ read only what the question needs.
 
 ## What to read for common questions
 
-- **"What does it call home to"**: grep for `fetch(`, `XMLHttpRequest`,
-  `WebSocket`, axios/got, and hard-coded hosts. List every distinct host and the
-  code path that reaches it. This is static evidence of *what the code can do*,
-  not proof a request fired, say so.
+- **"What does it call home to"**: collect candidate hosts with
+  `grep -rEoh 'wss?://[A-Za-z0-9.-]+|https?://[A-Za-z0-9.-]+' <tree> | sort -u >
+  work/out/hosts.txt`, then find the call sites: `fetch(`, `XMLHttpRequest`,
+  `WebSocket`, `net.request`, `https.request`, axios/got, the auto-updater feed
+  (`autoUpdater.setFeedURL`, `resources/app-update.yml`, `build.publish` in
+  `package.json`), crash reporting and analytics settings, and any
+  Content-Security-Policy that lists allowed hosts. Separate the app's own code
+  from library noise (most hosts in `node_modules` are documentation links). Answer
+  as "the code **can** contact these hosts", each with its call site; it is not
+  proof a request was made. Observing real traffic is a live step (SKILL.md
+  section 6) that the operator can approve as a next step.
 - **"What config / secrets ship in it"**: look for embedded config objects,
   `.env`-style constants, API keys. Report their presence and shape; redact the
   values, do not paste them.

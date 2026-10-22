@@ -16,7 +16,7 @@ A saved capture is just a file. Read it; do not replay or fetch from it.
 - **HAR** (browser export), JSON of requests/responses. Read the entries for
   hosts, methods, headers and timing. Do not fetch the recorded URLs.
 - **Saved mitmproxy flows / SAZ**: read with the matching reader
-  (`mitmproxy -r <flows>` in read mode, a SAZ reader for Fiddler). Treat bodies
+  (`mitmdump -n -r <flows>`: `-n` starts no proxy listener; never use replay options; a SAZ reader for Fiddler). Treat bodies
   as recorded evidence, not live attribution.
 - **Redact.** Captures carry cookies, tokens and auth headers. Report the
   endpoints and behaviour; redact the credentials.
@@ -34,8 +34,9 @@ never a personal browser profile.
   environment under `gdb`/`lldb` (or the platform debugger) to observe values
   that are only known at runtime. Scope to the declared behaviour; do not pivot
   into unrelated processes.
-- **Browser / Electron observation.** Observe a session the operator drives, or
-  drive one you launched in a throwaway profile, through the browser's debug
+- **Browser / Electron observation.** Inside the isolated environment only, with a
+  throwaway profile: observe a session the operator drives there, or drive one you
+  launched, through the browser's debug
   protocol. Read only the page under test. Do not attach to an existing,
   signed-in browser. Record what you observed; keep it inside the approved
   scenario.

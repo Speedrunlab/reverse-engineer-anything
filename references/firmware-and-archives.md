@@ -2,7 +2,7 @@
 
 Covers artifacts that carry other artifacts (firmware images, installers, packed
 executables, archives) and self-contained data files (model files, SQLite). All
-static and read-only; cite the sample's SHA-256; carve into the sample subfolder
+static and read-only; cite the sample's SHA-256; carve into `work/extracted/`
 only.
 
 ## Firmware images and packed blobs
@@ -13,11 +13,14 @@ then route each payload.
 - **Map first, carve second.** `binwalk <image>` shows what is embedded (file
   systems, compressed blobs, certificates, bootloaders) and where. Read the map
   before extracting.
-- **Carve** with `binwalk -e -d <outdir> <image>` (binwalk v3; v2 uses `-C <outdir>`) or, for broader format coverage
+- **Check the binwalk version first** (`binwalk --help`): v3 takes the output
+  directory as `-d`, v2 as `-C` (in v2, `-d` means depth).
+- **Carve** with `binwalk -e -d <outdir> <image>` (v3) or `binwalk -e -C <outdir> <image>` (v2) or, for broader format coverage
   and recursive extraction, **unblob** (`unblob -e <outdir> <image>`). Both write into a
-  directory you choose, point it at the sample subfolder.
+  directory you choose: point it at `work/extracted/`.
 - **Re-identify every carved payload** (`file`, magic bytes) and route it:
-  a squashfs/ext filesystem to mount read-only and walk; a native blob to
+  a squashfs or ext filesystem unpacked with `unsquashfs` or `7z` (never mounted);
+  a native blob to
   [native and managed](native-and-managed.md); a bundled app to its guide.
 - **Record the chain.** For each payload, note what it was and its offset in the
   image, so the path from the original bytes to the analysed payload is
@@ -28,14 +31,21 @@ then route each payload.
 
 ## Archives and installers
 
-- `7z l <archive>` to inventory, `7z x` to extract (into the subfolder). Handles
-  ZIP, many installer formats, and more.
+- `7z l -slt <archive>` to inventory (check paths before extracting), then
+  `7z x <archive> -o<work/extracted/name>` to extract. Handles ZIP, many installer
+  formats, and more.
 - A platform installer (DMG, MSI, MSIX, deb/rpm, PyInstaller executable) wraps a
   payload: inventory members, extract, re-identify, route. For a PyInstaller
   executable the application is the archive layer, not the bootloader stub.
+- An AppImage is unpacked with `unsquashfs` or `7z`; its own
+  `--appimage-extract` option runs the file, which is live mode.
 
 ## Model files
 
+- **Pickle-based model files** (`.pt`, `.pth`, `.pkl`, `.ckpt`, `.bin` saved with
+  pickle) run code when loaded. Never load them; inspect the opcodes with
+  `python3 -m pickletools <file>` (a zip-format `.pt` holds `data.pkl` inside:
+  list it with `7z l`, extract only that member, inspect it) or stop and ask.
 - **GGUF / safetensors** carry a metadata header plus weights. Read the
   **header** for architecture, tensor names/types, and embedded metadata with a
   format-specific reader; `strings` surfaces text metadata quickly.

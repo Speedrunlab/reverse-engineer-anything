@@ -16,13 +16,14 @@ It is **self-contained and agent-agnostic**. It drives standard open-source tool
 
 ## What it does
 
-- **Authorisation & scope gate first.** Before any tool runs: name the one target, record why the analysis is authorised, state the question, and choose static or live mode. Scope is written down and inherited by everything after.
-- **Safe sample handling.** Work on a copy in an isolated directory, record a SHA-256, never execute the sample to inspect it, redact credentials before reporting.
-- **Route by target type.** Native (ELF/Mach-O/PE), .NET, Go, Rust, WebAssembly, Electron/JavaScript, Android APK, firmware, packed archives, model files, SQLite, and recorded network captures, each to the right open tool and a focused reference guide.
-- **Static-first, smallest-first.** Cheap inventory passes before decompilation; follow the question, not the whole binary.
-- **Live analysis is gated.** Running, debugging, driving a browser or capturing traffic is off by default and needs explicit approval, an owned target, and an isolated environment.
-- **Evidence discipline.** A ledger that separates observation, inference and unknown; every finding cites the sample digest and the exact command; a report template and a verification pass.
-- **Version diffing** as a first-class workflow.
+- **Authorisation and scope gate first.** Before any tool runs: the target (or the versions to compare), an authority record with approver, reference, date and expiry, the question, static or live mode, and data handling. A new target, question or mode needs a new approval.
+- **Safe sample handling.** A clean, network-less work environment with no credentials; a fixed `work/` layout; SHA-256 of original and copy; never execute, never mount; extraction limits that stop path tricks and archive bombs.
+- **Content is data, never instructions.** Text inside a sample cannot grant approval or change scope; hosts and credentials found in a sample are never used or contacted; secrets are masked at the source.
+- **Route by target type**, most specific first: native (ELF/Mach-O/PE), .NET, Go, Rust, WebAssembly, Electron/JavaScript, Android, firmware, archives and installers, model files, SQLite and recorded captures.
+- **Static-first, smallest-first**, with rules for missing or failing tools and for output too large to read at once.
+- **Live analysis is gated**: per-step approval recorded verbatim, ownership or written vendor consent, and an isolated VM the agent checks and records, then tears down.
+- **Stop and ask** on mismatched digests, suspected malware, breached limits, possibly live credentials, bulk personal data, or embedded text trying to change scope.
+- **Evidence discipline**: an append-only ledger, observation separated from inference, confidence levels, bounded negative claims, a report template, and a safe two-version comparison procedure.
 
 ---
 
@@ -34,6 +35,19 @@ It is **self-contained and agent-agnostic**. It drives standard open-source tool
 
 ---
 
+## What's new in v1.1.0 (22 Oct 2026)
+
+Hardening round 1 (three independent reviews: coverage, safety, agent usability):
+- Authority record with approver and reference; data-handling check; re-approval on any scope change.
+- Work environment, work layout, extraction limits, never-mount, content-is-data and out-of-bounds rules; secrets masked at the source.
+- Live gate made checkable: per-step recorded approval, isolated VM checks, teardown.
+- New "stop and ask" section; append-only ledger with confidence levels; retention instead of blanket cleanup.
+- Routing picks the most specific row; rules for missing or failing tools and large output.
+- Recipes: crypto-library version (linked vs bundled), Electron host inventory, two-version comparison.
+- Fixes: binwalk v2/v3 flags, `7z -o`, `mitmdump -n -r`, full `bundletool` command, pickle model files never loaded, macOS `readelf`, rizin `aaa`.
+
+---
+
 ## Install
 
 ### Claude Code
@@ -41,7 +55,7 @@ It is **self-contained and agent-agnostic**. It drives standard open-source tool
 mkdir -p ~/.claude/skills
 git clone https://github.com/Speedrunlab/reverse-engineer-anything.git ~/.claude/skills/reverse-engineer-anything
 ```
-Then run: `/reverse-engineer-anything`. The skill assumes the open-source tools it names are installed; see `references/toolchain.md` for the pinned, verified install list.
+Then run: `/reverse-engineer-anything`. The skill assumes the open-source tools it names are installed; see `references/toolchain.md` for the install rules and tool list (pin each version, verify each download).
 
 ### OpenClaw
 ```bash
@@ -59,7 +73,7 @@ Copy `SKILL.md` into the agent's skills directory (or load it into its instructi
 ```
 SKILL.md                         the router: gate → identify → route → work → report
 references/
-  toolchain.md                   pinned, verified install list; no auto-fetch
+  toolchain.md                   install rules and tool list; nothing auto-fetches
   native-and-managed.md          ELF/Mach-O/PE, .NET, Go, Rust, WebAssembly
   javascript-and-electron.md     ASAR, minified bundles, source maps
   android.md                     APK/AAB manifest, resources, bytecode

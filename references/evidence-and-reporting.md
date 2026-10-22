@@ -38,11 +38,22 @@ observed execution. "The code can reach host X" is not "the app contacted X".
 
 A common and high-value task: what changed between two releases.
 
-- Normalise both sides the same way before diffing: extract/decompile/beautify
+- **Layout.** Each version gets its own directory and its own digest in the
+  ledger: `work/v1.2/` and `work/v1.3/`, each with `original/`, `extracted/` and
+  `out/`. The report lists both identities.
+- Normalise both sides the same way before diffing: extract/decompile/format
   each with the **same tool at the same version and settings**, or the diff is
   dominated by tooling noise.
-- For decompiled or beautified trees, a structural diff (`diff -ru`, or a
-  directory-aware diff) surfaces added/removed/changed functions and files.
+- **Summary first.** `diff -rq work/v1.2/extracted work/v1.3/extracted >
+  work/out/diff-files.txt` lists which files changed; then `diff -u` one file at a
+  time into `work/out/`, reading with `head`. Never pour a whole-tree diff into
+  your context.
+- **Obfuscated or minified builds** rename symbols between versions, so a code
+  diff is mostly noise. Compare what survives renaming: manifests and permissions
+  (`aapt2 dump badging` for each APK), component lists, native libraries and
+  asset hashes (`shasum -a 256` per file), string tables and import lists.
+- Report "added" or "removed" only when both sides were fully inventoried; state
+  the boundary otherwise.
 - For binaries, compare inventories first (symbols, imports, strings, section
   sizes); a changed import or a new string is a cheap signal before you diff
   decompiled functions.
@@ -54,7 +65,7 @@ A common and high-value task: what changed between two releases.
 Match a conclusion to the evidence type it needs:
 
 - A behavioural claim wants a shown code path, and ideally a runtime observation
-  under the live gate, not a string alone.
+  under SKILL.md section 6, not a string alone.
 - A "uses library X" claim wants the import or the linked code, not just a
   version string that could be vendored or stale.
 - When two independent signals agree (an import and a call site; a manifest

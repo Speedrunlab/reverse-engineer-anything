@@ -23,6 +23,28 @@ decompile anything:
 Record the architecture and bitness: a decompiler needs the right language/
 calling-convention, and a wrong guess produces confident nonsense.
 
+On macOS, `readelf` and `nm -D` are not installed by default: use `llvm-readelf`
+(from LLVM) or `greadelf` (Homebrew `binutils`); for Mach-O files use `otool` and
+`nm`.
+
+## Common questions
+
+- **Which crypto (or other) library and version does it use?** First separate
+  *linked* from *bundled*:
+  - Linked: `readelf -d <bin> | grep NEEDED` (ELF), `otool -L` (Mach-O), the
+    import table (PE). The library's own version is not in this file;
+    `readelf -V` shows the symbol versions it requires (for example
+    `OPENSSL_3.0.0`), which bounds it.
+  - Bundled (statically linked): look for the library's version string in the
+    file itself, e.g. `strings -a -n 6 <bin> | grep -Ei
+    'openssl [0-9]|libressl|boringssl|mbed ?tls|wolfssl|gnutls|libgcrypt|libsodium'`.
+  - Confidence: a version string inside the file plus calls into its routines is
+    high; a string alone is medium (it may be vendored but unused, or stale).
+- **What does it export or import?** The symbol and import tables above; record
+  them to `work/out/` and answer from the file.
+- **Is it signed, and by whom?** `codesign -dvvv` (Mach-O); for PE, a signature
+  reader such as `osslsigncode verify`.
+
 ## Decompilation (when a function's logic is the question)
 
 - **Ghidra** (headless) is the default for serious decompilation. Import the
@@ -33,8 +55,9 @@ calling-convention, and a wrong guess produces confident nonsense.
   - Pseudocode is a reconstruction, not source. Say so. Names, types and control
     flow are inferences unless symbols are present.
 - **rizin / radare2** for quick disassembly, cross-references and scripting when
-  you do not need full decompilation. `izz` (strings), `afl` (functions), `axt`
-  (xrefs to an address), `pdf` (disassemble a function).
+  you do not need full decompilation. Run `aaa` (analysis) first; then `izz`
+  (strings), `afl` (functions), `axt` (xrefs to an address), `pdf` (disassemble a
+  function). Send large listings to a file in `work/out/`.
 - Work from a seed: an exported symbol, a string's cross-reference, an import
   call site. Follow it outward only as far as the question needs.
 
