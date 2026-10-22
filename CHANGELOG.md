@@ -2,6 +2,30 @@
 
 Reverse Engineer Anything. Newest first.
 
+## v1.12.0 (23 Oct 2026)
+
+Hardening round 12: WebAssembly, Rust, model files and crash dumps walked end to
+end, proven findings only (5 medium reproduced).
+
+- Pickles: `pickletools` stops at the first pickle in a file, so a later
+  `GLOBAL` went unseen (reproduced with a harmless two-pickle file). A locked
+  helper, `pickle-dis.py`, disassembles every pickle and says when the whole
+  file was read; every `*.pkl` in a zip-format `.pt` is inspected, streamed out as
+  one named file.
+- `file` on a core dump prints the process's arguments (reproduced on a synthetic
+  core): its output goes to a file and the arguments are masked before reading.
+- The escape scan exempted any file named `commands.log`, so a truncated or
+  forged log went unseen (reproduced). Only the lead's log is exempt, and it is
+  checked instead: a regular file whose earlier bytes are unchanged.
+- Host lists dropped multi-host connection strings, names with `_` and IPv6
+  literals (reproduced): one host pattern now keeps all of them (tested).
+- A target can be a set of files named together (a core and its binary, a
+  database with its `-wal`/`-shm`, a module with its glue), each with its own
+  digest.
+
+Also: `unset DEBUGINFOD_URLS` in `env.sh`; a "this sample is malicious" finding
+is reported as the answer; macOS crash reports are read field by field.
+
 ## v1.11.0 (23 Oct 2026)
 
 Hardening round 11, proven findings only (4 medium findings reproduced, plus

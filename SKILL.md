@@ -4,7 +4,7 @@ description: "Reverse Engineer Anything: analyse shipped software you cannot rea
 license: MIT
 compatibility: Any agent with a terminal/shell tool and file read/write. Needs an operator-supplied analysis environment with no network and no credentials (a disposable VM for live work), the open-source tools in references/toolchain.md installed there, a working directory outside synced folders, and an approver independent of the requester.
 metadata:
-  version: 1.11.0
+  version: 1.12.0
   author: Speedrun AI Labs
   tags: reverse-engineering, binary-analysis, security-research, interoperability
 ---
@@ -38,8 +38,12 @@ is vague, ask again; never proceed on a guess.
 
 Ask, in a single message, for whatever the request does not already state:
 
-1. **Target(s):** one concrete artifact (a file path, a package, an image), or two
-   or more named versions of it for a comparison. If the user says only "my app",
+1. **Target(s):** one concrete artifact (a file path, a package, an image); or a
+   set of files named together as one target (a core dump and its binary, a
+   database with its `-wal`/`-shm`, a WebAssembly module with its JavaScript glue),
+   each copied to `original/<role>.<ext>` (`original/core.<ext>`,
+   `original/binary.<ext>`) with its own digest, a finding citing the digest of the
+   file it comes from; or two or more named versions of it for a comparison. If the user says only "my app",
    ask which file; never pick an example or a nearby fixture on their behalf.
 2. **Authority record:**
    - [ ] Basis: owned; licensed (cite the clause that permits analysis, or that
@@ -144,6 +148,7 @@ export XDG_CONFIG_HOME="$W/home/.config" XDG_CACHE_HOME="$W/home/.cache" XDG_DAT
 export JAVA_TOOL_OPTIONS="-Duser.home=$W/home -Djava.io.tmpdir=$W/home/tmp"   # JVM tools ignore $HOME and TMPDIR
 export SYFT_CHECK_FOR_APP_UPDATE=false
 umask 077   # every file written is owner-only
+unset DEBUGINFOD_URLS   # gdb and elfutils would otherwise fetch symbols by build-id
 ```
 
 ```sh
@@ -284,11 +289,13 @@ changed.
   other worker writing: write the step's ledger entry first, create its run
   directory with `mkdir "$W/scratch/<task>"` (no `-p`, so a directory that already
   exists fails loudly), wait one second, take `T0=$(date -u '+%Y-%m-%d %H:%M:%S UTC')`
-  and keep it in the conversation (not in a file), wait one more second, then run
+  and keep it in the conversation (not in a file) with the log's size and hash
+  (`S0=$(wc -c < "$W/commands.log")`, `H0=$(shasum -a 256 < "$W/commands.log")`),
+  wait one more second, then run
   the tool, sending its output only into `$ROOT` or the run directory. The two
   waits matter: GNU `find` compares fractions of a second and BSD `find` whole
   seconds, so this order neither flags the ledger write nor misses a write made in
-  T0's own second. After the tool finishes, all three must hold or it is a stop;
+  T0's own second. After the tool finishes, all four must hold or it is a stop;
   then append T0 and the result to the ledger:
   1. `shasum -a 256 -c "$W/scripts/SHA256SUMS"` reports every script `OK`;
   2. this scan of the whole working directory, with the recorded `T0` pasted in as
@@ -296,14 +303,18 @@ changed.
 
      ```sh
      find "$W" \( -path "$ROOT" -o -path "$W/scratch/<task>" -o -path "$W/home/tmp" \) -prune \
-       -o ! -type d -newerct "<T0>" ! -name commands.log -print
+       -o ! -type d -newerct "<T0>" ! -path "$W/commands.log" -print
      ```
 
-  3. `find "$W/home/tmp" -mindepth 1 -delete` empties the temp folder, so nothing
+  3. the lead's log is still a regular file whose first `S0` bytes are unchanged
+     (`[ ! -L "$W/commands.log" ]`, and `head -c <S0> "$W/commands.log" | shasum -a 256`
+     equals `H0`), with only this run's command and `[exit N]` lines after them;
+  4. `find "$W/home/tmp" -mindepth 1 -delete` empties the temp folder, so nothing
      a tool left there is loaded later.
 
   The scan skips only this tool's root, its run directory, the temp folder and the
-  command logs. It tests change time (`-newerct`) against a recorded time, not a
+  lead's log, which check 3 covers instead (a subagent's log must not change at
+  all, since no subagent writes during an extraction). It tests change time (`-newerct`) against a recorded time, not a
   file a hostile archive could rewrite, because an archive can backdate a file's
   modification time; `! -type d` also catches a planted symlink, such as one at
   `ledger.md`. A hit that is a tool's own first-run file (apktool's framework, for
@@ -372,7 +383,9 @@ changed.
 
 Do not infer the format from the file extension. Read the bytes.
 
-- `file <path>`: first-pass type.
+- `file <path> > "$W/out/file-<name>.txt"`: first-pass type. For a core dump it
+  includes the process's arguments (`from '...'`, reproduced), so read it with
+  `sed -E "s/from '[^']*'/from '<args>'/" "$W/out/file-<name>.txt" | cut -c1-200 | cat -v`.
 - `xxd <path> | head` / `head -c 64 <path> | xxd`: magic bytes when `file` is
   unsure.
 - For a container you suspect holds more (an installer, a firmware image, a
@@ -544,7 +557,9 @@ Stop, record why in the ledger, and ask the operator when:
 
 - the digest differs from what was expected, or ownership or signing contradicts
   the authority record;
-- the sample appears to be live malware, or a tool tries to execute something,
+- the sample appears to be live malware (when the question is whether it is
+  malicious, that is the answer: report it; the stop covers going further), or a
+  tool tries to execute something,
   reach the network, or escalate (asks for a password, `sudo`, or keychain access);
 - an extraction limit is breached;
 - a credential may be live, or personal data appears in bulk;

@@ -192,7 +192,7 @@ a sample.
   URL path (a webhook) cannot be detected generically, so treat `endpoints-<name>.txt`
   as secret-bearing (mode 0600, never handed over) and report hosts from the
   host-only list rather than full URLs
-  (`grep -oE '(//|<cred>@)[A-Za-z0-9.-]+(:[0-9]+)?' "$W/out/endpoints-<name>.txt" | sed -E 's#^(//|<cred>@)##' | LC_ALL=C sort -u > "$W/out/host-list-<name>.txt"`), and report
+  (`grep -oE '(//|<cred>@)(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9._-]+)(:[0-9]+)?(,(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9._-]+)(:[0-9]+)?)*' "$W/out/endpoints-<name>.txt" | sed -E 's#^(//|<cred>@)##' | tr ',' '\n' | LC_ALL=C sort -u > "$W/out/host-list-<name>.txt"`), and report
   a credential as file, key, type and length only (SKILL.md section 1).
 - Dependencies for an SBOM: the `pom.properties` groupId/artifactId/version, or
   hashes of bundled jars matched against the operator's known-set.
@@ -247,5 +247,7 @@ section 1) apply in full.
   analysis VM.
 - Windows minidump: Breakpad `minidump_stackwalk <dmp> <symbols>`, or the Python
   `minidump` library.
-- macOS `.ips`/`.crash` are text (JSON for `.ips`): read with `jq`/`cat`;
+- macOS `.ips`/`.crash` are text (JSON for `.ips`): select fields with `jq` or
+  `grep`, and read the result with `cut -c1-200 | cat -v` (the "Application
+  Specific Information" is sample-controlled);
   symbolicate with `atos` or `llvm-symbolizer`.

@@ -83,9 +83,32 @@ take an output directory, is the one exception, handled below.
 ## Model files
 
 - **Pickle-based model files** (`.pt`, `.pth`, `.pkl`, `.ckpt`, `.bin` saved with
-  pickle) run code when loaded. Never load them; inspect the opcodes with
-  `python3 -I -m pickletools <file>` (a zip-format `.pt` holds `data.pkl` inside:
-  list it with `7zz l`, extract only that member, inspect it) or stop and ask.
+  pickle) run code when loaded. Never load them. A file can hold several pickles
+  one after another (older `torch.save` files do), and `python3 -I -m pickletools`
+  stops at the first, so a later `GLOBAL` goes unseen (reproduced). Disassemble
+  every pickle with this helper, saved and locked as `$W/scripts/pickle-dis.py`:
+
+  ```python
+  # pickle-dis.py <file>: disassemble every pickle in the file in turn; nothing is loaded
+  import io, pickletools, sys
+  data = open(sys.argv[1], "rb").read()
+  f = io.BytesIO(data)
+  n = 0
+  while f.tell() < len(data):
+      n += 1
+      print(f"--- pickle {n} at offset {f.tell()}")
+      pickletools.dis(f)
+  print(f"--- {n} pickle(s), {len(data)} bytes, all read")
+  ```
+
+  Run `"$W/scripts/run.sh" python3 -I "$W/scripts/pickle-dis.py" <file> > "$W/out/pickle-<name>.txt"`
+  and search the file for `GLOBAL`, `STACK_GLOBAL`, `REDUCE`, `BUILD` and `INST`.
+  An exit with an error and no `all read` line means bytes that are not a pickle:
+  record it, never treat the file as fully read. A zip-format `.pt` holds several
+  members: list them all (`7zz l -slt`), stream each `*.pkl` out with
+  `7zz e -so <file> <member> > "$W/out/<name>-<member>"` (one named file, not an
+  extraction), and inspect every one; a TorchScript `code/` folder is source to
+  read, not run.
 - **GGUF / safetensors** carry a metadata header plus weights. Read the
   **header** for architecture, tensor names/types, and embedded metadata with a
   format-specific reader; `strings` surfaces text metadata quickly.
