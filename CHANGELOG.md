@@ -2,6 +2,34 @@
 
 Reverse Engineer Anything. Newest first.
 
+## v1.13.0 (23 Oct 2026)
+
+Hardening round 13: Linux packages, HAR exports, AppImage and Java jars walked end
+to end, proven findings only (7 medium reproduced or shown by quoting both
+passages). Every route the skill covers has now been walked at least once.
+
+- Three v1.12.0 commands were wrong (each reproduced, each fixed and re-tested):
+  the core-dump mask stopped at an apostrophe inside the arguments (it now masks
+  to the end of the line); the host-list `grep` lacked `-a`, so one NUL byte
+  turned it into "Binary file ... matches" (now `LC_ALL=C grep -a`); and the
+  `hosts.sh` user-info class could swallow a real host after a NUL or a comma
+  (now restricted to user-info characters, `@` kept for passwords). `endpoints.sh`
+  stops a capture at control bytes.
+- AppImage has its own route row (`file` reports only ELF).
+- Logging frameworks: `logback-classic` or `log4j-core` is the implementation;
+  `log4j-api`, `log4j-to-slf4j` and the other bridges are listed separately, so
+  a default Spring Boot jar is not reported as Log4j 2.
+- HAR credentials are counted per host with case-insensitive header names (an
+  exact `Authorization` match missed a lower-case `cookie`; reproduced).
+- A credential only counted, its value never read, is reported in the answer; a
+  recovered value that may be live remains a stop.
+
+Also: `.deb` files and control scripts unpack into two new roots; nested jars are
+an extraction or one streamed member; a pickle member is streamed to a fixed
+output name with the member as a quoted argument; a database in a target set
+keeps matched names; the lock line hashes every helper, `.py` included; the
+escape check runs before the link step; `unzip` is in the toolchain.
+
 ## v1.12.0 (23 Oct 2026)
 
 Hardening round 12: WebAssembly, Rust, model files and crash dumps walked end to

@@ -48,7 +48,8 @@ process that runs unreviewed code at install time.
 | Rust (built with cargo-auditable) | `rust-audit-info` | github.com/rust-secure-code/cargo-auditable (the `rust-audit-info` crate) | List the `.dep-v0` dependency tree offline. |
 | .NET IL dump | `monodis` | Mono | Dump IL and metadata without a GUI. |
 | ELF notes / cores | `llvm-readelf`; `eu-readelf`/`eu-stack`/`eu-unstrip` (elfutils, Linux only) | LLVM; sourceware.org/elfutils | Apple `nm` can't read ELF. On macOS use `llvm-readelf` or `$(brew --prefix binutils)/bin/readelf`; run the `eu-*` tools in the Linux VM. |
-| Pickle inspection | `python3 -I -m pickletools` (stdlib) | Python | Disassemble a pickle without loading it. |
+| Pickle inspection | `pickletools` (stdlib), through the skill's `pickle-dis.py` helper | Python | Disassemble every pickle in a file without loading it (plain `python3 -m pickletools` stops at the first). |
+| ZIP | `unzip` (Info-ZIP), or `bsdtar` | distro packages | List (`unzip -l`) and stream single members (`unzip -p`) of jars and other ZIPs. |
 | Java / JVM | `javap` (JDK), **CFR** or **Vineflower**, `jarsigner` | jdk; github.com/leibnitz27/cfr, github.com/Vineflower/vineflower | Disassemble and decompile `.class`/`.jar`. |
 | PyInstaller / pyc | `pyinstxtractor`, `pyi-archive_viewer` (PyInstaller), **pycdc**/`pycdas` | github.com/extremecoders-re/pyinstxtractor, github.com/zrax/pycdc | Unpack a PyInstaller exe and disassemble/decompile `.pyc`. |
 | macOS bundles / packages | `plutil`, `codesign`, `lipo`, `pkgutil` | built into macOS | Read Info.plist, entitlements, architectures, package signatures. |

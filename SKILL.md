@@ -4,7 +4,7 @@ description: "Reverse Engineer Anything: analyse shipped software you cannot rea
 license: MIT
 compatibility: Any agent with a terminal/shell tool and file read/write. Needs an operator-supplied analysis environment with no network and no credentials (a disposable VM for live work), the open-source tools in references/toolchain.md installed there, a working directory outside synced folders, and an approver independent of the requester.
 metadata:
-  version: 1.12.0
+  version: 1.13.0
   author: Speedrun AI Labs
   tags: reverse-engineering, binary-analysis, security-research, interoperability
 ---
@@ -42,7 +42,8 @@ Ask, in a single message, for whatever the request does not already state:
    set of files named together as one target (a core dump and its binary, a
    database with its `-wal`/`-shm`, a WebAssembly module with its JavaScript glue),
    each copied to `original/<role>.<ext>` (`original/core.<ext>`,
-   `original/binary.<ext>`) with its own digest, a finding citing the digest of the
+   `original/binary.<ext>`; a database keeps matched names, `original/sample.db`
+   with `original/sample.db-wal`, or SQLite ignores the log) with its own digest, a finding citing the digest of the
    file it comes from; or two or more named versions of it for a comparison. If the user says only "my app",
    ask which file; never pick an example or a nearby fixture on their behalf.
 2. **Authority record:**
@@ -166,7 +167,7 @@ Create the tree with `mkdir -p "$W"/{original,extracted,out,scripts,scratch,home
 Then **lock the scripts**, so nothing an extractor writes can change them:
 
 ```sh
-chmod +x "$W/scripts"/*.sh && shasum -a 256 "$W/scripts"/*.sh > "$W/scripts/SHA256SUMS" \
+chmod +x "$W/scripts"/*.sh && find "$W/scripts" -type f ! -name SHA256SUMS -exec shasum -a 256 {} + > "$W/scripts/SHA256SUMS" \
   && chmod a-w "$W/scripts"/* "$W/scripts"
 ```
 
@@ -322,7 +323,8 @@ changed.
   The time format above is the one GNU and BSD `find` both accept.
 - **Neutralise links before any recursive read.** Filesystem images legitimately
   contain symlinks, hard links and device nodes. Before `grep -r`, `diff -r`, a
-  tree-wide `shasum`, `syft` or any batch read of a root:
+  tree-wide `shasum`, `syft` or any batch read of a root, and after the escape
+  check (the link record it writes in `out/` would otherwise trip that scan):
   1. Make the root writable and searchable to you first (`chmod -R u+rwX "$ROOT"`; extractors keep
      an image's read-only directories, where `rm` would fail silently; `chmod -R`
      does not follow links). Then record and neutralise in one pass, acting only on
@@ -367,8 +369,11 @@ changed.
 - **Out of bounds.** Hosts, URLs and credentials recovered from the sample are
   findings, not resources: never authenticate with them, probe them or fetch from
   them (including remote source maps), and never upload the sample or extracts to
-  an outside service. A credential that may be live is an incident: stop and tell
-  the security contact; never test it.
+  an outside service. A credential whose value you have recovered, and that may
+  be live, is an incident: stop and tell the security contact; never test it. A
+  credential only counted by type and host, its value never read (a capture's
+  auth headers, a key's presence in config), is reported in the answer with the
+  security contact named; that is not a stop.
 - **Never display a secret.** Search for secrets with counting or listing
   pipelines (`grep -c`, `grep -l`), or send masked matches straight to a mode-0600
   file in `out/`, never to the screen. Record a secret's type, length and location;
@@ -384,8 +389,9 @@ changed.
 Do not infer the format from the file extension. Read the bytes.
 
 - `file <path> > "$W/out/file-<name>.txt"`: first-pass type. For a core dump it
-  includes the process's arguments (`from '...'`, reproduced), so read it with
-  `sed -E "s/from '[^']*'/from '<args>'/" "$W/out/file-<name>.txt" | cut -c1-200 | cat -v`.
+  includes the process's arguments (`from '...'`, reproduced), which can contain
+  quotes themselves, so mask from there to the end of the line:
+  `sed -E "s/from '.*/from '<args>' (rest of line masked)/" "$W/out/file-<name>.txt" | cut -c1-200 | cat -v`.
 - `xxd <path> | head` / `head -c 64 <path> | xxd`: magic bytes when `file` is
   unsure.
 - For a container you suspect holds more (an installer, a firmware image, a
@@ -426,10 +432,11 @@ as section 4 item 7 says, whether or not the guide shows the redirect.
 | macOS app bundle / `.pkg` / `.dmg` | `plutil`, `codesign -d --entitlements`, `lipo`, `pkgutil`; `7zz` for DMG | [native and managed](references/native-and-managed.md#macos-bundles) |
 | Windows installer (MSI / Inno / NSIS) | `msiinfo`/`msiextract`, `innoextract`, `7zz` | [firmware and archives](references/firmware-and-archives.md#installers-and-os-packages) |
 | Packed Python exe (PyInstaller: `MEIPASS`/`python3NN.dll` in strings) or loose `.pyc` | `pyi-archive_viewer -l`, pyinstxtractor, `pycdas`/`pycdc` | [firmware and archives](references/firmware-and-archives.md#installers-and-os-packages) |
+| AppImage (an ELF with a squashfs appended; `file` reports only ELF) | `readelf -h` for the offset, `unsquashfs -o`, `7zz` | [firmware and archives](references/firmware-and-archives.md#installers-and-os-packages) |
 | Linux package (`.deb`, `.rpm`) | `dpkg-deb -c/-x/-e`, `rpm -qp --scripts`, `bsdtar` | [firmware and archives](references/firmware-and-archives.md#installers-and-os-packages) |
 | Firmware image / packed archive | `binwalk`, `unblob`, `7zz`, `unsquashfs` | [firmware and archives](references/firmware-and-archives.md) |
 | Crash / core dump (read statically) | `readelf -n`, `eu-stack --core`, `gdb -nx -iex "set auto-load off" --batch -c`; `minidump_stackwalk` | [native and managed](references/native-and-managed.md#crash-and-core-dumps) |
-| Model file (GGUF/safetensors; pickle `.pt`/`.pkl` is code) | a header reader; `pickletools` for pickle, never load | [firmware and archives](references/firmware-and-archives.md) |
+| Model file (GGUF/safetensors; pickle `.pt`/`.pkl` is code) | a header reader; `pickle-dis.py` (every pickle in the file) for pickle, never load | [firmware and archives](references/firmware-and-archives.md) |
 | SQLite database | `sqlite3 -readonly`, on a copy, schema first | [firmware and archives](references/firmware-and-archives.md) |
 | Captured traffic (HAR, pcap, SAZ) | `tshark`/Wireshark, `jq` for HAR; `mitmdump -n -r` for flows | [network and runtime](references/network-and-runtime.md) |
 | Software bill of materials for a tree or image | package DBs, SONAMEs, banners; `syft` if staged | [firmware and archives](references/firmware-and-archives.md#component-inventory-sbom) |

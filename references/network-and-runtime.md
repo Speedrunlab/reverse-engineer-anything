@@ -54,8 +54,14 @@ A saved capture is just a file. Read it; do not replay or fetch from it.
   `jq -r '.log.entries[] | (.request.method+" "+(.request.url|sub("^[a-z]+://([^/?#]*@)?";"")|split("/")[0]|split("?")[0]|split("#")[0]))' <file> | sort -u | cat -v`
   (method and host only: user-info, path, query and fragment, where tokens sit,
   are dropped, including a query with no path before it)
-  for the endpoints; count auth headers rather than printing them. Do not fetch
-  the recorded URLs.
+  for the endpoints. Count credentials per host without printing them; header
+  names are matched case-insensitively, because HTTP/2 exports write them in
+  lower case (an exact `"Authorization"` match missed a lower-case `cookie`;
+  reproduced):
+  `jq -r '.log.entries[].request | select([.headers[]?.name | ascii_downcase] | any(. == "authorization" or . == "proxy-authorization" or . == "cookie")) | .url | sub("^[a-z]+://([^/?#]*@)?";"") | split("/")[0] | split("?")[0] | split("#")[0]' <file> | LC_ALL=C sort | uniq -c`.
+  Also count URLs with user-info or a secret-named query key, and bound a zero to
+  what the export kept (browsers can omit cookies and bodies). Do not fetch the
+  recorded URLs.
 - **Saved mitmproxy flows / SAZ**: read with the matching reader
   (`mitmdump -n -r <flows> > "$W/out/flows-<name>.txt"`, read with targeted searches, since it prints full URLs; `-n` starts no proxy listener; never use replay options; a SAZ reader for Fiddler). Treat bodies
   as recorded evidence, not live attribution.

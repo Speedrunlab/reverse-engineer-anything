@@ -48,8 +48,9 @@ take an output directory, is the one exception, handled below.
   `innoextract -d <dir>`. **NSIS:** `7zz x`. **InstallShield:** `unshield -d <dir>`.
   **CAB:** `cabextract -d <dir>`. **MSIX/AppX:** unzip and read `AppxManifest.xml`.
   Never `msiexec /a`.
-- **Linux packages:** `dpkg-deb -c <f>.deb | cat -v` (list), `-x <f>.deb <dir>` (files) and
-  `-e <f>.deb <dir>` (the maintainer scripts; read, never run); `rpm -qp --scripts
+- **Linux packages:** `dpkg-deb -c <f>.deb | cat -v` (list), `-x <f>.deb "$W/extracted/<name>-files"` (files) and
+  `-e <f>.deb "$W/extracted/<name>-control"` (the maintainer scripts; read, never
+  run), two new roots, each an extraction under SKILL.md section 1; `rpm -qp --scripts
   <f>.rpm > "$W/out/rpm-scripts-<name>.txt"` (scriptlets can embed secrets: query
   the file, read it with `cut -c1-200 | cat -v`) then `bsdtar -xf <f>.rpm -C <dir>` (bsdtar reads rpm directly, so no
   `cd` into the output is needed). The maintainer scripts are part of the review.
@@ -106,7 +107,8 @@ take an output directory, is the one exception, handled below.
   An exit with an error and no `all read` line means bytes that are not a pickle:
   record it, never treat the file as fully read. A zip-format `.pt` holds several
   members: list them all (`7zz l -slt`), stream each `*.pkl` out with
-  `7zz e -so <file> <member> > "$W/out/<name>-<member>"` (one named file, not an
+  `7zz e -so <file> "<member>" > "$W/out/<name>-pkl<N>.pkl"` (the member name
+  is a quoted argument, never part of the output path; one named file, not an
   extraction), and inspect every one; a TorchScript `code/` folder is source to
   read, not run.
 - **GGUF / safetensors** carry a metadata header plus weights. Read the

@@ -156,13 +156,18 @@ a sample.
   writes files instead of flooding stdout) or **Vineflower**; JADX also reads
   `.jar`. Treat decompiler output as a reconstruction.
 - A Spring Boot fat jar nests dependencies under `BOOT-INF/lib/*.jar`; those are
-  payloads of the same artifact (no new authority entry), unzipped and read in
-  place.
+  payloads of the same artifact (no new authority entry): unzip each into its own
+  new extraction root (an extraction, SKILL.md section 1), or stream one member
+  out with `unzip -p` as a single named file.
 - `jarsigner -verify -verbose -certs <jar>` reports signing; an unsigned or
   mismatched jar is a provenance finding.
 - **Logging framework and version:** list `BOOT-INF/lib/*` (or the flat jar's
-  entries) matching `log4j|logback|slf4j`; `slf4j` is only the facade, so report
-  it separately from the implementation (log4j2, logback). Take the version from
+  entries) matching `log4j|logback|slf4j`. The implementation is `logback-classic`
+  (Logback) or `log4j-core` (Log4j 2). `slf4j-api` is the facade, and `log4j-api`,
+  `log4j-to-slf4j`, `jul-to-slf4j`, `log4j-slf4j*-impl` and `logback-core` are
+  APIs, bridges or bindings: list them separately, and never report Log4j 2 as the
+  framework unless `log4j-core` is present (a default Spring Boot jar ships
+  `log4j-api` and `log4j-to-slf4j` with Logback as the implementation). Take the version from
   the nested jar's `MANIFEST.MF` `Implementation-Version` or its `pom.properties`,
   not the filename alone.
 - **Hard-coded endpoints and credentials:** one helper, saved and locked as
@@ -176,7 +181,7 @@ a sample.
   set -o pipefail; umask 077
   SED="${SED:-sed}"
   "$SED" --version >/dev/null 2>&1 || { echo "endpoints.sh: needs GNU sed" >&2; exit 2; }
-  LC_ALL=C grep -rEaoh -- "((https?|wss?|amqps?|rediss?|ldaps?|mongodb(\+srv)?|jdbc:[a-z0-9:]+)://[^ \"'<>]+|jdbc:oracle:thin:[^ \"'<>]+)" "$1" \
+  LC_ALL=C grep -rEaoh -- "((https?|wss?|amqps?|rediss?|ldaps?|mongodb(\+srv)?|jdbc:[a-z0-9:]+)://[^ \"'<>[:cntrl:]]+|jdbc:oracle:thin:[^ \"'<>[:cntrl:]]+)" "$1" \
   | "$SED" -E "s#//[^/?# \"']*@#//<cred>@#g; s#(thin:)[^@ \"']*@#\1<cred>@#g; s/((pass(word|wd)?|pwd|secret|token|api_?key|access_?key|access_token|client_secret|key|sig(nature)?|auth)=)[^&; \"']*/\1<redacted>/Ig" \
   | sort -u > "$2"
   ```
@@ -191,8 +196,9 @@ a sample.
   the files with `grep -rEl` and the same pattern. A token embedded in a
   URL path (a webhook) cannot be detected generically, so treat `endpoints-<name>.txt`
   as secret-bearing (mode 0600, never handed over) and report hosts from the
-  host-only list rather than full URLs
-  (`grep -oE '(//|<cred>@)(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9._-]+)(:[0-9]+)?(,(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9._-]+)(:[0-9]+)?)*' "$W/out/endpoints-<name>.txt" | sed -E 's#^(//|<cred>@)##' | tr ',' '\n' | LC_ALL=C sort -u > "$W/out/host-list-<name>.txt"`), and report
+  host-only list rather than full URLs (review it first: a user-info holding a raw
+  `/`, invalid in a URL but seen, is not masked and would show as `user:digits`)
+  (`LC_ALL=C grep -aoE '(//|<cred>@)(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9._-]+)(:[0-9]+)?(,(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9._-]+)(:[0-9]+)?)*' "$W/out/endpoints-<name>.txt" | sed -E 's#^(//|<cred>@)##' | tr ',' '\n' | LC_ALL=C sort -u > "$W/out/host-list-<name>.txt"`), and report
   a credential as file, key, type and length only (SKILL.md section 1).
 - Dependencies for an SBOM: the `pom.properties` groupId/artifactId/version, or
   hashes of bundled jars matched against the operator's known-set.
