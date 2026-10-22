@@ -4,7 +4,7 @@ description: "Reverse Engineer Anything: analyse shipped software you cannot rea
 license: MIT
 compatibility: Any agent with a terminal/shell tool and file read/write. Needs an operator-supplied analysis environment with no network and no credentials (a disposable VM for live work), the open-source tools in references/toolchain.md installed there, a working directory outside synced folders, and an approver independent of the requester.
 metadata:
-  version: 1.13.0
+  version: 1.14.0
   author: Speedrun AI Labs
   tags: reverse-engineering, binary-analysis, security-research, interoperability
 ---
@@ -402,14 +402,18 @@ Map what you find to a route in section 3. When one artifact nests another (an
 APK inside a ZIP, a native blob inside firmware), identify the outer layer,
 extract it (section 5), then re-identify each payload. Anomalies, a mismatched
 magic, an unexpected section, padding that is not padding, are usually where
-the answer is.
+the answer is. For an installed application directory whose runtime is unknown,
+the marker table in the native guide ("What is this app built with") names the
+route: Electron, .NET, Java, Qt, Unity, Unreal, Godot, Flutter, PyInstaller or a
+WebView host.
 
 ---
 
 ## 3. ROUTE BY TARGET TYPE
 
-Pick the **most specific** row that matches: Electron, Go, Rust, .NET and
-WebAssembly outrank the generic native row, which is the fallback. When the target
+Pick the **most specific** row that matches: Electron, Go, Rust, .NET, Unity
+IL2CPP, Flutter and WebAssembly outrank the generic native row, which is the
+fallback. When the target
 is a container (firmware, an installer, an archive, a bundle) and the question is
 about what is inside it (an SBOM, the hosts an app can contact), take the
 container's row first to unpack it (section 5), then the row for the question on
@@ -426,21 +430,29 @@ as section 4 item 7 says, whether or not the guide shows the redirect.
 | Go binary | `go version -m`, `strings`, Ghidra (current releases recover Go symbols) | [native and managed](references/native-and-managed.md) |
 | Rust binary (built with cargo-auditable) | `rust-audit-info`, then Ghidra/rizin | [native and managed](references/native-and-managed.md) |
 | WebAssembly (.wasm) | `wasm2wat` / `wasm-objdump` (WABT) | [native and managed](references/native-and-managed.md) |
+| Unity IL2CPP (`global-metadata.dat` + `GameAssembly`/`libil2cpp.so`) | Il2CppDumper, then Ghidra | [native and managed](references/native-and-managed.md#unity-il2cpp) |
+| Flutter app (`libapp.so` or `App.framework` + `libflutter.so`) | `strings`, `readelf -n`, the snapshot-hash reader; Blutter if staged | [native and managed](references/native-and-managed.md#flutter-dart-aot) |
+| Erlang / Elixir (`.beam`, a release's `lib/*/ebin/`) | `erl` with `beam_lib`, `strings` | [native and managed](references/native-and-managed.md#erlang-and-elixir-beam) |
+| GPU code inside a binary (CUDA fatbin, HIP bundle) | `cuobjdump --list-elf --list-ptx`, `roc-obj-ls` | [native and managed](references/native-and-managed.md#gpu-code-objects-cuda-hip) |
+| EVM contract bytecode (hex or raw, supplied by the operator) | `cast selectors`, `cast disassemble` | [native and managed](references/native-and-managed.md#evm-bytecode) |
 | JavaScript / Electron / ASAR | `asar extract`, the `source-map` package, a formatter | [javascript and electron](references/javascript-and-electron.md) |
 | Android APK (an AAB converts with `bundletool` first) | `apktool`, JADX, `aapt2 dump` | [android](references/android.md) |
 | Java / JVM (`.jar`, `.war`, `.class`) | `unzip -l`, `javap -c -p`, CFR or Vineflower; `jarsigner -verify` | [native and managed](references/native-and-managed.md#java-and-jvm) |
-| macOS app bundle / `.pkg` / `.dmg` | `plutil`, `codesign -d --entitlements`, `lipo`, `pkgutil`; `7zz` for DMG | [native and managed](references/native-and-managed.md#macos-bundles) |
+| Apple app bundle (`.app`, iOS `.ipa`) / `.pkg` / `.dmg` | `plutil`, `codesign -d --entitlements`, `otool -ov`, `assetutil`, `lipo`, `pkgutil`; `7zz` for DMG and IPA | [native and managed](references/native-and-managed.md#macos-bundles) |
 | Windows installer (MSI / Inno / NSIS) | `msiinfo`/`msiextract`, `innoextract`, `7zz` | [firmware and archives](references/firmware-and-archives.md#installers-and-os-packages) |
 | Packed Python exe (PyInstaller: `MEIPASS`/`python3NN.dll` in strings) or loose `.pyc` | `pyi-archive_viewer -l`, pyinstxtractor, `pycdas`/`pycdc` | [firmware and archives](references/firmware-and-archives.md#installers-and-os-packages) |
 | AppImage (an ELF with a squashfs appended; `file` reports only ELF) | `readelf -h` for the offset, `unsquashfs -o`, `7zz` | [firmware and archives](references/firmware-and-archives.md#installers-and-os-packages) |
 | Linux package (`.deb`, `.rpm`) | `dpkg-deb -c/-x/-e`, `rpm -qp --scripts`, `bsdtar` | [firmware and archives](references/firmware-and-archives.md#installers-and-os-packages) |
+| Godot game (`.pck`, or a pack appended to the executable) | `gdre_tools --headless --list-files` / `--extract` | [firmware and archives](references/firmware-and-archives.md#installers-and-os-packages) |
+| HarmonyOS package (`.hap`, `.hsp`, `.app` pack) | `7zz`, `module.json`, `ark_disasm` | [firmware and archives](references/firmware-and-archives.md#installers-and-os-packages) |
 | Firmware image / packed archive | `binwalk`, `unblob`, `7zz`, `unsquashfs` | [firmware and archives](references/firmware-and-archives.md) |
 | Crash / core dump (read statically) | `readelf -n`, `eu-stack --core`, `gdb -nx -iex "set auto-load off" --batch -c`; `minidump_stackwalk` | [native and managed](references/native-and-managed.md#crash-and-core-dumps) |
 | Model file (GGUF/safetensors; pickle `.pt`/`.pkl` is code) | a header reader; `pickle-dis.py` (every pickle in the file) for pickle, never load | [firmware and archives](references/firmware-and-archives.md) |
 | SQLite database | `sqlite3 -readonly`, on a copy, schema first | [firmware and archives](references/firmware-and-archives.md) |
-| Captured traffic (HAR, pcap, SAZ) | `tshark`/Wireshark, `jq` for HAR; `mitmdump -n -r` for flows | [network and runtime](references/network-and-runtime.md) |
+| Captured traffic (HAR, pcap, SAZ, qlog) | `tshark`/Wireshark, `jq` for HAR and qlog; `mitmdump -n -r` for flows; `7zz` for SAZ | [network and runtime](references/network-and-runtime.md) |
+| Logic-analyser or signal recording (`.sr`, `.vcd`) | `sigrok-cli -i` with a named decoder | [network and runtime](references/network-and-runtime.md#logic-analyser-and-signal-recordings-static) |
 | Software bill of materials for a tree or image | package DBs, SONAMEs, banners; `syft` if staged | [firmware and archives](references/firmware-and-archives.md#component-inventory-sbom) |
-| Native executable / library, nothing more specific (ELF, Mach-O, PE) | `file`, `nm`, `objdump`, `readelf`/`otool`, then Ghidra or rizin | [native and managed](references/native-and-managed.md) |
+| Native executable / library, nothing more specific (ELF, Mach-O, PE) | `file`, `nm`, `objdump`, `readelf -S/-n`/`otool`, `checksec`, then Ghidra or rizin | [native and managed](references/native-and-managed.md) |
 | A running app or live browser (approved) | see section 6 | [network and runtime](references/network-and-runtime.md) |
 
 If nothing matches cleanly, start with `file` + `strings` + `binwalk` to

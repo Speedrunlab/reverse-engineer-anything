@@ -2,6 +2,48 @@
 
 Reverse Engineer Anything. Newest first.
 
+## v1.14.0 (23 Oct 2026)
+
+Coverage pass: the target types a general reverse-engineering toolkit is
+expected to handle were listed against the routes here, and the missing ones
+added, each as the same static, read-only, evidence-first recipe.
+
+- New routes: Unity IL2CPP (`global-metadata.dat` + `GameAssembly`), Flutter
+  (Dart AOT snapshot hash, engine build-id, package inventory), Erlang/Elixir
+  BEAM, GPU code objects (CUDA fatbin, HIP bundles), EVM contract bytecode
+  (selectors, offline), Godot PCK, HarmonyOS packages, and logic-analyser
+  recordings (sigrok-cli).
+- Apple: iOS `.ipa` (provisioning profile, FairPlay encryption as a stated
+  limit), Objective-C and Swift names, `@rpath` resolution, compiled nibs, asset
+  catalogs and keyed archives.
+- Electron: fuses read from the binary (pinned `@electron/fuses`, or the raw
+  wire), the renderer isolation surface (BrowserWindow preferences, preload and
+  contextBridge, IPC channel pairing, `.node` modules), an unminifier, and
+  scripts extracted from a HAR for static analysis.
+- Android: scheme-by-scheme signing output and key-rotation lineage; markers for
+  Flutter, Unity, .NET for Android and React Native inside an APK.
+- Native: build identity (`readelf -n`, `dwarfdump --uuid`), hardening checks,
+  Windows resources (`wrestool`), .NET NativeAOT and single-file bundles,
+  headerless blobs in Ghidra (`BinaryLoader` with an explicit base), licensed
+  decompilers under the same rules, and a table of runtime markers for an
+  installed app.
+- Captures: `tshark -G fields` and decode-as, Fiddler SAZ as a ZIP, QUIC qlog
+  event summaries; an owned Android device and instrumentation named as live
+  steps.
+- Evidence: pairing functions across two builds (BinDiff, Version Tracking),
+  call paths bounded by indirect calls, and verifying a reconstruction against a
+  finite claim list.
+- Toolchain: seventeen rows added, each with its source and what it does and
+  does not do.
+
+Tested here on fixtures or a system binary: the snapshot-hash reader, the fuse
+wire check, the HAR script extraction, the qlog summary, `otool -ov`,
+`dwarfdump --uuid`, `LC_RPATH`, `assetutil --info` and `swift demangle`. Not run
+here (tool absent on this host; command forms checked against each tool's own
+documentation): Il2CppDumper, gdre_tools, cast, cuobjdump, roc-obj-ls, erl,
+sigrok-cli, checksec, wrestool, bindiff, wakaru, electron-fuses, ark_disasm,
+hermes-dec, apksigner.
+
 ## v1.13.0 (23 Oct 2026)
 
 Hardening round 13: Linux packages, HAR exports, AppImage and Java jars walked end

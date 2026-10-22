@@ -59,8 +59,23 @@ The manifest answers a lot before any code:
   [native and managed](native-and-managed.md).
 - **Third-party SDKs**: package prefixes in the class tree and strings identify
   bundled SDKs and their rough versions.
-- **Signing**: `apksigner verify --print-certs <app>.apk` reads the signing
-  certificate(s); useful for provenance and version continuity.
+- **What it is built with**: `lib/<abi>/libapp.so` beside `libflutter.so` and
+  `assets/flutter_assets/` is Flutter (JADX shows only the thin Android shell;
+  the Dart AOT snapshot is covered in the native guide's Flutter section);
+  `assets/bin/Data/Managed/Metadata/global-metadata.dat` with `libil2cpp.so` is
+  Unity IL2CPP (native guide); `assemblies/*.dll` with `libmonodroid.so` is
+  .NET for Android (the managed route; the assemblies may be LZ4-compressed,
+  `XALZ` magic, so decompress before ILSpy); `assets/index.android.bundle` is
+  React Native, plain JavaScript (the JavaScript guide) or Hermes bytecode
+  (`hermes-dec` disassembles it, an extraction when it writes a tree).
+- **Signing**: `apksigner verify -v --print-certs <app>.apk > "$W/out/apksigner-<name>.txt"`
+  reports, per scheme, `Verified using v1 / v2 / v3 / v3.1 scheme ...: true|false`
+  and each signer's certificate subject and SHA-256; `apksigner lineage -v --print-certs --in <app>.apk`
+  prints the v3 key-rotation lineage when one is declared. "Verified" means the
+  bytes match the signature the file carries; who the signer is needs the
+  operator's known certificate fingerprint to compare against. A v1-only APK
+  cannot be told from one whose v2/v3 block was stripped, so say "v1 only", not
+  "unsigned by v2".
 
 ## Pitfalls
 

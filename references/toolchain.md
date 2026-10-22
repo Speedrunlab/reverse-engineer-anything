@@ -67,6 +67,23 @@ process that runs unreviewed code at install time.
 | Network captures | **Wireshark**/`tshark`, **mitmproxy** | wireshark.org, mitmproxy.org | Read saved pcap/HAR/flows; capture only in a controlled env. |
 | SQLite | `sqlite3` | sqlite.org | Open a **copy** read-only, as the firmware and archives guide shows (`-readonly -init /dev/null`, `trusted_schema=OFF`). |
 | Model files | format header readers (GGUF/safetensors), `strings` | per-format | Read metadata; do not load weights to "inspect". |
+| Unity IL2CPP | **Il2CppDumper** | github.com/Perfare/Il2CppDumper | Needs a .NET runtime; parses `global-metadata.dat` plus the code binary, runs nothing. |
+| Flutter | `strings`, `readelf -n`; a snapshot-hash table (reFlutter's `enginehash.csv`); **Blutter** optional | github.com/Impact-I/reFlutter, github.com/worawit/blutter | Blutter builds a Dart runtime for the exact SDK: prepare it when the image is built. |
+| Godot | **GDRE Tools** (`gdre_tools`) | github.com/GDRETools/gdsdecomp | Headless `--list-files`, `--extract`, `--recover`. |
+| EVM bytecode | Foundry `cast` (`selectors`, `disassemble`) | getfoundry.sh (github.com/foundry-rs/foundry) | Offline; never `--resolve`, which calls a public service. |
+| GPU code objects | `cuobjdump`, `nvdisasm` (CUDA toolkit); `roc-obj-ls`, `roc-obj-extract` (ROCm); `clang-offload-bundler` (LLVM) | developer.nvidia.com; rocm.docs.amd.com | Vendor toolkits, free but not open source; install into the image. |
+| Erlang / Elixir | `erl` (OTP) for `beam_lib` | erlang.org | Reads chunks without loading the module. |
+| Logic-analyser recordings | **sigrok-cli** with libsigrokdecode | sigrok.org | Reads `.sr`, `.vcd`, CSV; decodes only. |
+| ELF hardening | `checksec` | github.com/slimm609/checksec | RELRO, canary, NX, PIE, RPATH, Fortify. |
+| PE resources | `wrestool` (icoutils) | nongnu.org/icoutils | Lists and extracts resources; no version-info decoding. |
+| Apple resources | `assetutil`, `plutil`, `openssl smime` | built into macOS | Asset catalogs, nibs, keyed archives, provisioning profiles. |
+| Objective-C / Swift names | `otool -ov`, `swift demangle`; `dsdump` optional | Xcode command-line tools; github.com/DerekSelander/dsdump | Class, method and protocol names. |
+| Two builds, function pairing | **BinDiff** + BinExport | github.com/google/bindiff | Apache 2.0; exports from Ghidra, IDA or Binary Ninja. |
+| Electron fuses | `@electron/fuses` (`electron-fuses read`) | npm (pinned, `--ignore-scripts`) | Reads the fuse wire in the Electron binary. |
+| JavaScript unminifying | `wakaru` (`@wakaru/cli`) | npm (pinned, `--ignore-scripts`) | Rewrites a bundle into modules; output is not source. |
+| HarmonyOS | `ark_disasm` | OpenHarmony SDK toolchains | Disassembles `modules.abc`. |
+| React Native (Hermes) | `hermes-dec` | github.com/P1sec/hermes-dec | Disassembles and decompiles Hermes bytecode. |
+| Live only (SKILL.md section 6) | `adb` (platform-tools), Frida, `strace`, `ltrace` | Android SDK; frida.re; distro packages | Inside the isolated VM, under a session envelope. |
 
 ## Keeping it safe for the whole organisation
 

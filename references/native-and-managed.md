@@ -24,6 +24,14 @@ decompile anything:
   - PE: `objdump -x`, or a PE reader for the import/export tables.
 - Sections and layout: `readelf -S` / `objdump -h`. An unexpected section, an
   executable-and-writable segment, or an oversized blob is worth a note.
+- Build identity: `readelf -n` (ELF notes: the GNU build-id and ABI tag),
+  `dwarfdump --uuid` for a Mach-O (tested). It pairs a binary with its symbols,
+  a crash or a vendor advisory; a missing note is absence of that record, not a
+  statement about the build.
+- Hardening: `checksec file <bin>` (the Go rewrite; older shell releases take
+  `--file=<bin>`), or `readelf -l`/`-d` for `GNU_RELRO`, the `GNU_STACK` flags
+  and `BIND_NOW`: RELRO, stack canary, NX, PIE, RPATH/RUNPATH and Fortify, each a
+  static declaration.
 
 Record the architecture and bitness: a decompiler needs the right language/
 calling-convention, and a wrong guess produces confident nonsense.
@@ -55,6 +63,11 @@ On macOS, `readelf` and `nm -D` are not installed by default: use `llvm-readelf`
   reader such as `osslsigncode verify`. Revocation needs the network, which the
   section 1 environment denies, so any revocation lookup fails: record revocation
   as "not checked".
+- **Version, icons and other Windows resources?** `wrestool -l <exe> > "$W/out/pe-res-<name>.txt"`
+  (icoutils) lists resource types and names; `wrestool -x -t14 -o "$W/out/icons-<name>" <exe>`
+  extracts the icon groups (a tree write, so an extraction). It does not decode
+  version info (type 16): read `FileVersion` and `ProductVersion` as UTF-16
+  strings with `strings -a -e l`, as the SBOM section of the archives guide does.
 
 ## Decompilation (when a function's logic is the question)
 
@@ -69,8 +82,23 @@ On macOS, `readelf` and `nm -D` are not installed by default: use `llvm-readelf`
   you do not need full decompilation. Run `aaa` (analysis) first; then `izz`
   (strings), `afl` (functions), `axt` (xrefs to an address), `pdf` (disassemble a
   function). Send large listings to a file in `$W/out/`.
+- A licensed IDA, Binary Ninja or Hopper works under the same rules (never on
+  the credentialed host; version recorded with each finding). Opening a file in
+  any decompiler is static; only running the target is live.
 - Work from a seed: an exported symbol, a string's cross-reference, an import
   call site. Follow it outward only as far as the question needs.
+
+## Headerless code (raw blobs, bootloaders, DOS)
+
+A blob carved from firmware with no ELF, PE or Mach-O header loads only with an
+architecture and a base address you supply:
+`analyzeHeadless <project-dir> <project> -import <blob> -processor <language id, e.g. ARM:LE:32:Cortex> -loader BinaryLoader -loader-baseAddr 0x08000000 -postScript <export script>`
+(headless loader arguments take the `-loader-<name>` form). Both values are
+inferences from the firmware map (the vector table, strings referenced by
+absolute address, the chip named by the board or datasheet): record them with
+every finding and check them against cross-references that resolve, because a
+wrong base produces plausible nonsense. A DOS MZ executable imports with
+Ghidra's own loader; a headerless `.com` is a raw 16-bit image loaded at `0x100`.
 
 ## Managed (.NET / CLI)
 
@@ -83,6 +111,12 @@ On macOS, `readelf` and `nm -D` are not installed by default: use `llvm-readelf`
   to source. Still separate what the IL shows from what you infer about intent.
 - Obfuscated assemblies (renamed symbols, control-flow flattening) are common;
   note obfuscation as an observation and keep conclusions bounded.
+- A .NET **NativeAOT** image has no CIL: `ilspycmd` finds no managed metadata and
+  `strings` shows .NET type names in a native binary. Treat it as native
+  (Ghidra); the pseudocode is a reconstruction of compiled code, not C#, and the
+  type names and frozen string literals it keeps are the useful map. A
+  **single-file** bundle (one large exe, no `*.dll` beside it) still holds CIL:
+  ILSpy opens it.
 - **What config does it read, and what does it do with the values?** Grep the
   decompiled tree for `ConfigurationManager`, `AppSettings`, `GetSection`,
   `GetConnectionString`, `ConnectionStrings`, `IConfiguration`, `GetValue<`,
@@ -233,6 +267,31 @@ A `.app` is a directory; a `.pkg`/`.dmg` wraps one. Read, never launch.
   (that mounts it).
 - ASAR, embedded frameworks and XPC services under `Contents/` are payloads of the
   same app (no new approval, SKILL.md section 5): route each separately.
+- **Classes and methods (Objective-C and Swift):** `otool -ov <bin> > "$W/out/objc-<name>.txt"`
+  dumps the Objective-C runtime metadata (class, method and protocol names;
+  tested, 1,121 named entries in a system app); `nm <bin> | swift demangle > "$W/out/swift-syms-<name>.txt"`
+  restores Swift names when the binary is not stripped. Names map the code; they
+  are not evidence that a path runs. A header generator (`dsdump`, `class-dump`)
+  writes a tree, an extraction.
+- **What it loads:** `otool -L <bin>` lists the libraries each executable links and
+  `otool -l <bin> | grep -A2 LC_RPATH` the `@rpath` search paths (tested); resolve
+  `@executable_path` and `@loader_path` against the bundle layout. A library that
+  resolves nowhere in the bundle comes from the system (the dyld shared cache) or
+  is missing: a finding either way. `dwarfdump --uuid <bin>` is the build UUID.
+- **Interface files and asset catalogs:** compiled `.nib`/`.storyboardc` and
+  `NSKeyedArchiver` files are binary plists, so `plutil -p <file>` reads them
+  (class names and outlets, not source); `assetutil --info <Assets.car> > "$W/out/assets-<name>.json"`
+  (built into macOS; tested) lists each asset's name, size and appearance without
+  decoding images.
+- **iOS `.ipa`:** a ZIP: `7zz x` into a new extraction root; `Payload/<App>.app/`
+  holds `Info.plist`, the Mach-O, `Frameworks/`, `PlugIns/` (extensions) and
+  `embedded.mobileprovision` (the signing profile, a plist inside a CMS wrapper:
+  `openssl smime -inform der -verify -noverify -in embedded.mobileprovision 2>/dev/null | plutil -p -`,
+  which names the team, the entitlements and the provisioned devices, the last a
+  list of personal data to count, not quote). An App Store binary is
+  FairPlay-encrypted: `otool -l <bin> | grep -A4 LC_ENCRYPTION_INFO` showing
+  `cryptid 1` means the code is not readable statically, and decrypting it is out
+  of scope; a developer or enterprise build (`cryptid 0`) reads like any Mach-O.
 
 ## Crash and core dumps
 
@@ -257,3 +316,130 @@ section 1) apply in full.
   `grep`, and read the result with `cut -c1-200 | cat -v` (the "Application
   Specific Information" is sample-controlled);
   symbolicate with `atos` or `llvm-symbolizer`.
+
+## Unity IL2CPP
+
+Unity ships either Mono (`<Game>_Data/Managed/Assembly-CSharp.dll`, the managed
+route above) or IL2CPP: the C# compiled to native code in `GameAssembly.dll`,
+`GameAssembly.so`, `libil2cpp.so` (Android) or `UnityFramework` (iOS), with the
+names, types and string literals kept in `global-metadata.dat`
+(`<Game>_Data/il2cpp_data/Metadata/` on desktop, `assets/bin/Data/Managed/Metadata/`
+in an APK). The two files together are one target set (SKILL.md section 0).
+
+- **Il2CppDumper** (open source, .NET) parses both in memory and runs nothing:
+  `Il2CppDumper <code binary> <global-metadata.dat> "$W/out/il2cpp-<name>"` (on
+  Linux or macOS, `dotnet Il2CppDumper.dll ...`). It writes `dump.cs` (every class,
+  method and field with its code offset), `stringliteral.json` (secret-bearing:
+  query it), `script.json` and `il2cpp.h` (for its Ghidra and IDA scripts, which
+  apply the names) and `DummyDll/` (name-only stub assemblies ILSpy can open; no
+  method bodies). A tree write, so an extraction under SKILL.md section 1.
+- Names come from the metadata, bodies are native: decompile a chosen method in
+  Ghidra at the offset `dump.cs` gives, after running the script that applies the
+  names. A metadata file the tool rejects as invalid is encrypted or obfuscated:
+  record that and stop there; decrypting it is out of scope.
+
+## Flutter (Dart AOT)
+
+`libapp.so` (per ABI in an APK; `App.framework/App` on iOS; `app.so` on desktop)
+is the Dart ahead-of-time snapshot of the app's own code; `libflutter.so` or
+`Flutter.framework` is the engine. The snapshot is not Java and not
+decompilable to Dart source, so the triage facts matter:
+
+- **Snapshot hash**, 32 hex characters 20 bytes after the magic `f5 f5 dc dc`,
+  which identifies the exact Dart SDK build (tested on a fixture):
+
+  ```sh
+  python3 -I - <libapp.so> <<'EOF'
+  import re, sys
+  d = open(sys.argv[1], "rb").read()
+  for m in re.finditer(b"\xf5\xf5\xdc\xdc", d):
+      h = d[m.start()+24:m.start()+56]
+      print(f"magic at {m.start()}: snapshot_hash", h.decode() if re.fullmatch(rb"[0-9a-f]{32}", h) else "<not hex>")
+  EOF
+  ```
+
+  Map the hash to a Dart or Flutter release with a table the operator staged (the
+  reFlutter project publishes one); no lookup happens here. The VM and isolate
+  snapshots in one file carry the same hash.
+- **Engine identity:** `readelf -n libflutter.so` for the build-id, and any
+  `Dart VM version` string (release engines often strip it).
+- **Dependency inventory:** the snapshot's string pool names every Dart file:
+  `strings -a -n 8 -- <libapp.so> | grep -oE 'package:[A-Za-z0-9_]+' | sort | uniq -c | sort -rn | head -50`
+  lists the packages, and `dart:` URIs the SDK libraries used.
+- **Names and more:** Blutter (open source) recovers class and function names
+  and the object pool, but it builds a Dart runtime at the exact SDK version
+  first, fetching that source: do that when the analysis image is built, never in
+  the analysis environment. `flutter_assets/` (asset and font manifests, bundled
+  JSON) is readable data; a `kernel_blob.bin` means a debug build whose Dart
+  kernel is far richer than an AOT snapshot.
+
+## Erlang and Elixir (BEAM)
+
+A `.beam` file (a release ships them under `lib/<app>-<version>/ebin/`; Elixir
+modules are `Elixir.<Module>.beam`) is an IFF container (`FOR1` magic, `BEAM`
+form) whose chunks hold the atom table (`AtU8`), exports, imports, lambdas, the
+code, literals, and `CInf` compile info (source path, compiler version). `Dbgi`
+or `Abst`, when the build kept debug info, holds the abstract code, which prints
+back as readable source.
+
+- Read the chunks with OTP's `beam_lib`, which parses the file without loading
+  the module: `erl -noshell -eval 'io:format("~p~n", [beam_lib:chunks("<abs>.beam", [exports, imports, attributes, compile_info])]), halt().' > "$W/out/beam-<name>.txt"`;
+  `[abstract_code]` returns the AST when debug info exists, and `erl_pp:form/1`
+  prints it. The Erlang runtime runs; nothing from the sample does.
+- Without a runtime, `strings -a -n 3` on the file still lists the atoms, which
+  are the module, function and record names.
+
+## GPU code objects (CUDA, HIP)
+
+A host binary or library can carry GPU code: a CUDA fatbin (one cubin ELF per
+`sm_XX` plus PTX text) or a Clang offload bundle for HIP (AMDGPU code objects
+per `gfx9xx`). The tools are the vendors' own toolkits (free, not open source;
+install them into the analysis image like any other tool).
+
+- **Inventory first:** `cuobjdump --list-elf --list-ptx <file> > "$W/out/cuobjdump-<name>.txt"`
+  on an executable, `.so`, `.a`, `.o` or standalone fatbin. `cuobjdump -xptx all <file>`
+  and `-xelf all <file>` write every PTX and cubin into the current directory, so
+  run them from the run directory as an extraction; `cuobjdump -ptx <file>` and
+  `cuobjdump -sass <file>` print PTX and SASS to stdout (one named file in
+  `out/`); `nvdisasm <cubin>` disassembles a single cubin.
+- **HIP:** `roc-obj-ls -v <exe>` lists the code objects as URIs, `roc-obj-extract '<uri>'`
+  writes one (quote it: the URI contains `&`), and
+  `clang-offload-bundler --list --input=<bundle> --type=o` lists a bundle's entries.
+- The facts are kernel names (`.entry` in PTX, the symbols of a cubin), parameter
+  counts and shared-memory declarations, and the targets present. A target in the
+  binary says what it can run on, not what ran.
+
+## EVM bytecode
+
+A deployed contract's runtime bytecode, as hex text or raw bytes the operator
+supplies (nothing is fetched from a chain, an explorer or IPFS).
+
+- `cast selectors <bytecode> > "$W/out/selectors-<name>.txt"` (Foundry; offline)
+  lists the 4-byte function selectors with inferred argument types and
+  mutability, and `cast disassemble <bytecode>` prints the opcodes. Its `--resolve`
+  flag looks names up on a public service: never use it here. Record the
+  selectors; the operator can resolve them outside.
+- Selectors and types are inferences from the dispatcher, not a verified ABI. The
+  trailing CBOR metadata (`ipfs`, `solc` fields) is a declaration, not a verified
+  compiler or source identity, and the Keccak code hash is not the file's SHA-256.
+  Init code and runtime code are different artifacts: say which you have.
+
+## What is this app built with
+
+For an installed application directory whose runtime is unknown, the files
+beside the main executable usually say (path conventions: low confidence until
+`file` and the executable's imports confirm them):
+
+| Marker | Runtime | Route |
+|---|---|---|
+| `resources/app.asar` or `resources/app/`, `*.pak`, `libffmpeg` | Electron | [JavaScript and Electron](javascript-and-electron.md) |
+| `*.deps.json`, `*.runtimeconfig.json`, `System.*.dll` | .NET | Managed, above |
+| `jre/`, `runtime/lib/modules`, `lib/*.jar` beside a launcher | Java (jpackage) | Java and JVM, above |
+| `Qt6Core.dll`/`Qt5Core.dll`/`libQt*`, `qt.conf`, `qml/` | Qt (C++) | native, above |
+| `<Game>_Data/`, `UnityPlayer.dll`/`libunity.so`, `GameAssembly.*` or `Managed/` | Unity | Unity IL2CPP or Managed, above |
+| `Engine/`, `<Game>/Content/Paks/*.pak`, `UnrealEngine` in strings | Unreal (C++) | native; assets in `.pak` |
+| `.pck`, or an executable with a PCK trailer | Godot | [archives guide](firmware-and-archives.md#installers-and-os-packages) |
+| `libflutter.so`/`flutter_windows.dll`, `flutter_assets/`, `app.so` | Flutter | Flutter, above |
+| `_internal/` with `base_library.zip`, `python3NN.dll` | PyInstaller | [archives guide](firmware-and-archives.md#installers-and-os-packages) |
+| `WebView2Loader.dll` beside a small executable | Tauri or another WebView2 host (Rust or .NET, web assets embedded) | native or Managed, above |
+| `node_modules/`, `package.json`, a Node binary | Node application | [JavaScript and Electron](javascript-and-electron.md) |

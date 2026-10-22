@@ -47,6 +47,10 @@ A saved capture is just a file. Read it; do not replay or fetch from it.
     through `run.sh` with the filter passed as an argument and `pipefail` on, so a
     rejected filter is an error, not an empty file:
     `"$W/scripts/run.sh" bash -c 'set -o pipefail; timeout 600 tshark -nr "$1" -Y "$2" -T fields -e dns.qry.name | sort -u > "$3"' _ <file> 'dns.flags.response==0' "$W/out/dns-<name>.txt"`.
+  - **Field names and odd ports:** `tshark -G fields | grep -i '<term>' | cut -f2,3`
+    lists the display-filter fields before you write a filter (a mistyped field
+    is an error, which `pipefail` surfaces). A known protocol on a non-standard
+    port is decoded with `-d`, for example `-d tcp.port==8883,mqtt`.
   Report the flows and fields you observed; a page of packets does not prove
   network completeness, and a capture is one session, not the app's whole behaviour.
 - **HAR** (browser export), JSON of requests/responses. Project only non-secret
@@ -62,14 +66,62 @@ A saved capture is just a file. Read it; do not replay or fetch from it.
   Also count URLs with user-info or a secret-named query key, and bound a zero to
   what the export kept (browsers can omit cookies and bodies). Do not fetch the
   recorded URLs.
-- **Saved mitmproxy flows / SAZ**: read with the matching reader
-  (`mitmdump -n -r <flows> > "$W/out/flows-<name>.txt"`, read with targeted searches, since it prints full URLs; `-n` starts no proxy listener; never use replay options; a SAZ reader for Fiddler). Treat bodies
-  as recorded evidence, not live attribution.
+  **Scripts out of a HAR**, for static analysis of a web app (the JavaScript
+  guide): index the JavaScript entries, then write each body to a fixed name in a
+  new directory `$ROOT` under `$W/out/` (an extraction, SKILL.md section 1; tested
+  on a fixture):
+
+  ```sh
+  jq -r '.log.entries | to_entries[] | select((.value.response.content.mimeType // "") | test("javascript")) | "\(.key)\t\(.value.response.content.encoding // "text")\t\(.value.request.url)"' <file> > "$ROOT/index.tsv"
+  while IFS=$'\t' read -r i enc url; do
+    if [ "$enc" = base64 ]; then jq -r ".log.entries[$i].response.content.text" <file> | base64 -d > "$ROOT/script-$i.js"
+    else jq -r ".log.entries[$i].response.content.text" <file> > "$ROOT/script-$i.js"; fi
+  done < "$ROOT/index.tsv"
+  ```
+
+  `index.tsv` holds full URLs, so it is secret-bearing; the ledger cites hosts.
+  To test a reimplementation against recorded behaviour, derive the endpoint and
+  shape list from the capture and write a local stub with normal coding tools;
+  recorded values are never replayed to the real host.
+- **Saved mitmproxy flows**: `mitmdump -n -r <flows> > "$W/out/flows-<name>.txt"`,
+  read with targeted searches, since it prints full URLs; `-n` starts no proxy
+  listener; never use replay options. Treat bodies as recorded evidence, not live
+  attribution.
+- **Fiddler `.saz`**: a ZIP. `7zz x` it into a new extraction root; `raw/NN_c.txt`
+  and `raw/NN_s.txt` are the raw request and response of session NN, headers and
+  cookies included, so query them as you would a HAR (hosts and counts, never
+  printed) and name the root secret-bearing. `_index.htm` lists the sessions.
+- **QUIC / HTTP/3 qlog** (JSON; aioquic and others write it): events only, no
+  bodies. `jq -r '.traces[].events[] | if type == "array" then "\(.[1]):\(.[2])" else .name end' <file> | sort | uniq -c`
+  gives the event mix for both the array and the object event forms (tested on a
+  fixture); select one event type's fields with `.[3]` or `.data`. A qlog is one
+  endpoint's own view of one connection: pair it with the pcap when both exist,
+  and do not read a loss or timing claim from it alone.
 - **Never read a credential into context.** Captures carry cookies, tokens and
   auth headers. Select non-sensitive fields only (the projections above); report
   the endpoints and behaviour, and credentials as counts with their type and host.
 - Bound claims to the capture: "the recording shows requests to X", not "the
   app only talks to X", unless the capture is known-complete for that session.
+
+## Logic-analyser and signal recordings (static)
+
+A saved logic-analyser capture (`.sr` from PulseView, `.vcd`, a CSV of samples)
+is a file: decoding it touches no hardware. The tool is `sigrok-cli` with
+libsigrokdecode.
+
+- `sigrok-cli -L | cat -v` lists the installed decoders; `sigrok-cli -i <file>.sr --show`
+  prints the recording's sample rate and channel names (an `.sr` is a ZIP whose
+  `metadata` member holds the same).
+- Decode with the decoder, its wiring and its settings named explicitly, into a
+  file: `sigrok-cli -i <file>.sr -P uart:rx=D0:baudrate=115200 -A uart=rx-data > "$W/out/decode-<name>.txt"`
+  (`-I vcd` when the format is not detected; stack decoders with commas, for
+  example `-P spi:clk=D0:mosi=D1,sdcard_spi`). Channel names must be the
+  recording's own; baud rate, wiring and protocol are the operator's inputs,
+  never guessed.
+- Decoded bytes are sample data: read the file with counts and `cut -c1-120 | cat -v`.
+  Empty output means that decoder saw nothing at those settings, not that the bus
+  was silent; a decode error at a sample range is a finding about the settings
+  before it is one about the device.
 
 ## Live observation (approval-gated, isolated)
 
@@ -93,6 +145,13 @@ profile.
 - **Capture fresh traffic** only in the controlled environment, against the
   owned target, with an interception proxy you configured for that sandbox.
   Capturing traffic that is not yours, or on a shared network, is out of scope.
+- **An owned Android device or emulator**, inside the isolated environment, with
+  `adb` pointed at that device only (`adb devices` recorded first):
+  `adb shell dumpsys package <pkg>`, `adb logcat -d`, `adb shell pm path <pkg>`
+  then `adb pull` to retrieve an installed APK as a new sample (hash it, new
+  ledger entry). Never `adb install` the sample on, or `adb root`, the operator's
+  own phone. Instrumentation (Frida, `strace`, `ltrace`) is live too: inside the
+  VM, within the envelope, against the declared process only.
 
 ## Reconciling static and runtime evidence
 

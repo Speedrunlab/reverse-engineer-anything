@@ -13,6 +13,9 @@ then route each payload.
 - **Map first, carve second.** `binwalk <image>` shows what is embedded (file
   systems, compressed blobs, certificates, bootloaders) and where. Read the map
   before extracting.
+- **Entropy as a hint:** `binwalk -E <image> > "$W/out/entropy-<name>.txt"` scores
+  each region; flat high entropy is compression or encryption, which look alike.
+  Carve and identify before calling a region either.
 - **Check the binwalk version first** (`binwalk --help`): v3 takes the output
   directory as `-d`, v2 as `-C` (in v2, `-d` means depth). Never use v2 at 2.3.3
   or earlier (CVE-2022-4510: a crafted image writes outside the output directory).
@@ -79,6 +82,20 @@ take an output directory, is the one exception, handled below.
   `--appimage-extract` runs the file (live mode); instead compute the offset from
   the ELF header (`e_shoff + e_shentsize * e_shnum`, read with `readelf -h`) and
   `unsquashfs -d <dir> -o <offset> <file>`, or `7zz x`.
+- **HarmonyOS / OpenHarmony (`.hap`, `.hsp`, an `.app` pack of them):** ZIPs.
+  `module.json` (Stage model) or `config.json` (FA model) declares the abilities
+  and permissions; `ets/modules.abc` is Ark bytecode, disassembled with the SDK's
+  `ark_disasm <file>.abc "$W/out/abc-<name>.txt"` (one named output file);
+  `libs/<abi>/*.so` route to the native guide.
+- **Godot (`.pck`, or a pack appended to the game executable, found by its
+  12-byte trailer):** GDRE Tools, headless:
+  `gdre_tools --headless --list-files=<pck> > "$W/out/pck-list-<name>.txt"` to
+  inventory, `--extract=<pck> --output=<dir>` to unpack into a new extraction
+  root, and `--recover=<pck> --output=<dir>` to also decompile the GDScript
+  (`.gdc`) to text, a reconstruction. The engine version and each file's declared
+  MD5 are header claims, separate from the SHA-256 you take of each extracted
+  file. An encrypted pack needs its key (`--key=`); a key recovered from the
+  executable is a secret under SKILL.md section 1.
 - After any unpack, re-identify each payload (SKILL.md section 2) and route it.
 
 ## Model files

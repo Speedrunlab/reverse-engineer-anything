@@ -73,6 +73,16 @@ A common and high-value task: what changed between two releases.
 - For binaries, compare inventories first (symbols, imports, strings, section
   sizes); a changed import or a new string is a cheap signal before you diff
   decompiled functions.
+- **Pairing functions across two builds:** BinDiff (Apache 2.0) scores matches
+  between two exports made by its BinExport plugin from Ghidra, IDA or Binary
+  Ninja: `bindiff <a>.BinExport <b>.BinExport --output_dir "$W/out/bindiff-<name>"`;
+  Ghidra's Version Tracking does the same in its GUI. A match is a candidate with
+  a similarity score, not an identity: confirm a changed pair by reading both
+  decompiles, and call a function added or removed only when both binaries were
+  fully analysed.
+- **A call path** ("does `main` reach `send`?") comes from the call graph
+  (Ghidra's Function Call Graph, rizin `agC`) and is bounded by indirect calls:
+  with unresolved indirect targets, "no path" is an unknown, not a negative.
 - Report changes as observations ("function `foo` gained a bounds check") and
   keep intent ("to fix a vulnerability") as a labelled inference.
 
@@ -86,6 +96,17 @@ Match a conclusion to the evidence type it needs:
   version string that could be vendored or stale.
 - When two independent signals agree (an import and a call site; a manifest
   permission and the API call), say so, it raises confidence.
+
+## Verifying a reconstruction
+
+When the user builds a reimplementation from the findings, verify it the way a
+finding is verified. Write the observed behaviours as a finite list of typed
+claims (input, expected output, and the ledger entry each came from: a code path
+read, or a recorded session), run the reimplementation against that list, and
+report passes against the claim count, with the vectors kept as evidence in
+`$W/out/verify-<name>.txt` (free of recorded credentials). A full pass covers the
+declared claims only, never equivalence; a behaviour nobody wrote down stays
+unknown, and a claim that needed a live observation to state is marked so.
 
 ## Final verification pass
 

@@ -19,9 +19,22 @@ JavaScript, in `resources/app.asar` (Windows/Linux) or
   the pinned `@electron/asar`). `asar list app.asar` first to see the tree
   cheaply.
 - The entry point is in the extracted `package.json` (`main`). Start there.
-- **Fuses and integrity:** note whether the app ships with Electron fuses that
-  disable Node inspection or enforce ASAR integrity, relevant later if a live
-  question comes up, and off-limits to defeat.
+- **Fuses and integrity:** Electron fuses are flags baked into the Electron
+  binary itself (`Contents/Frameworks/Electron Framework.framework/Electron Framework`
+  on macOS, the main executable on Windows and Linux), not into `app.asar`. Read
+  them with the pinned `@electron/fuses` package, whose command is
+  `electron-fuses read --app <App>.app > "$W/out/fuses-<name>.txt"`. Without it the
+  raw wire is visible to `strings`: the 32-byte sentinel
+  `dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX`, a version byte, a length byte, then one byte
+  per fuse, `0` disabled, `1` enabled, `r` removed, in the order the package's
+  source lists for that wire version (version 1 starts RunAsNode,
+  EnableCookieEncryption, EnableNodeOptionsEnvironmentVariable,
+  EnableNodeCliInspectArguments, EnableEmbeddedAsarIntegrityValidation,
+  OnlyLoadAppFromAsar):
+  `LC_ALL=C grep -aoE 'dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX.{2}[01r]{1,16}' <binary> | cut -c33- | od -An -c`
+  (tested on a fixture). No sentinel means unknown, not disabled.
+  `EnableNodeCliInspectArguments` disabled or removed means the app ignores
+  `--inspect`, which bounds any approved live step; a fuse is off-limits to defeat.
 
 ## Minified and bundled JavaScript
 
@@ -42,6 +55,13 @@ read only what the question needs.
   otherwise reads a `.jsbeautifyrc` from parent directories).
   Bundlers leave module boundaries (webpack chunk ids, module wrappers) you can
   navigate.
+- **Unminify when formatting is not enough.** An unminifier such as `wakaru`
+  (`wakaru <bundle>.js --unpack -o <outdir>`, from a pinned `@wakaru/cli` install,
+  run from a fresh `$W/scratch/<task>/` with `<outdir>` a new directory under
+  `$W/out/`, an extraction under SKILL.md section 1) splits a bundle back into
+  modules and rewrites some patterns into readable form. Its output is a rewrite
+  of the bundle, never the original source: cite the bundle's digest, not the
+  rewritten file.
 - Search before you read whole files: grep the beautified tree for the API, the
   string, the config key or the route the question is about, and work out from
   the hit.
@@ -75,6 +95,25 @@ read only what the question needs.
   as "the code **can** contact these hosts", each with its call site; it is not
   proof a request was made. Observing real traffic is a live step (SKILL.md
   section 6) that the operator can approve as a next step.
+- **"What can the web content reach"** (Electron): read each `new BrowserWindow(`
+  and its `webPreferences` (`nodeIntegration`, `contextIsolation`, `sandbox`,
+  `webSecurity`, `preload`, `allowRunningInsecureContent`), each preload's
+  `contextBridge.exposeInMainWorld` (the API the page is handed), and the IPC
+  pairs: `ipcMain.handle`/`ipcMain.on` channel literals in the main process
+  against `ipcRenderer.invoke`/`ipcRenderer.send` in preload and renderer code.
+  Pair a channel only on an exact literal match; a channel built from a variable
+  stays unresolved. Note `<webview>` tags, `setWindowOpenHandler`,
+  `shell.openExternal` fed from page data, `utilityProcess`, and any `.node`
+  native module (usually in `app.asar.unpacked`): a `require` of a `.node` file
+  names a native binding, not a verified export, so route that file to the
+  native guide. Each item is a static observation of a setting as written; a
+  later call can change it, so none proves the posture at runtime.
+- **A web app without a live browser**: when the operator supplies a HAR with
+  response bodies or a saved page, write each JavaScript body to its own file in a
+  new directory under `$W/out/` (the recipe is in the network guide; an
+  extraction under SKILL.md section 1), then treat that directory as a bundle tree
+  above. The ledger records the host each file came from, never the full URL,
+  since a query string can carry a token.
 - **"What config / secrets ship in it"**: look for embedded config objects,
   `.env`-style constants, API keys. Report their presence and shape; redact the
   values, do not paste them.
