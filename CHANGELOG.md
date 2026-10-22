@@ -2,6 +2,33 @@
 
 Reverse Engineer Anything. Newest first.
 
+## v1.7.0 (23 Oct 2026)
+
+Hardening round 7 (adversarial, fresh-reader), scope frozen. New commands were run
+against a test tree before shipping. One finding was rejected after checking the
+source: GNU sed reads a `#` inside a bracket expression as part of the class, not
+as the delimiter (`match_slash` hands brackets to `snarf_char_class`), so
+`endpoints.sh` is unchanged.
+
+- The escape check now scans the whole working directory by change time, skipping
+  only the new root, `scratch/`, the temp and cache folders and the command logs.
+  A backdated ledger edit, a planted `.pth` under the sandboxed HOME and a write
+  into another root are all caught; a missing path is a failure, never a pass.
+- Link neutralisation first makes the root writable (extractors keep read-only
+  directories, where `rm` failed silently) and is then confirmed by a re-check
+  that must print 0. Version comparisons also diff the two link records.
+- A directory target's manifest (`manifest.sh`) uses relative paths and lists link
+  targets, so its SHA-256 is reproducible on any machine; source and copy match
+  with `cmp`.
+- More secret-safe reads: `aapt2 dump badging`, `go version -m`, `msiinfo export`
+  and `readelf -n` on a core go to files; the manifest search keeps whole tags
+  (the `<application>` flags were being cut).
+- Consistency: same root names across versions, `diff` exit codes, each version's
+  `original/` locked, a pre-ledger stop is ledger entry 1 itself, location checks
+  rerun through `run.sh`, approval wording matches section 0, scratch is always a
+  fresh `<task>/` directory, output paths for `wasm2wat` and `lipo -thin`,
+  extractions kept after an abort until the operator answers.
+
 ## v1.6.0 (23 Oct 2026)
 
 Hardening round 6 (adversarial, fresh-reader), scope frozen. New commands were run

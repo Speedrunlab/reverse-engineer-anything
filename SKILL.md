@@ -4,7 +4,7 @@ description: "Reverse Engineer Anything: analyse shipped software you cannot rea
 license: MIT
 compatibility: Any agent with a terminal/shell tool and file read/write. Needs an operator-supplied analysis environment with no network and no credentials (a disposable VM for live work), the open-source tools in references/toolchain.md installed there, a working directory outside synced folders, and an approver independent of the requester.
 metadata:
-  version: 1.6.0
+  version: 1.7.0
   author: Speedrun AI Labs
   tags: reverse-engineering, binary-analysis, security-research, interoperability
 ---
@@ -87,9 +87,10 @@ runs no live step, its output is untrusted, and only the lead appends to the led
 5. Ledger entry 1 (section 7). Then continue at section 2.
 
 A stop at steps 2 to 4 happens before the ledger exists. If the location checks
-passed, write the stop as ledger entry 1; if they failed, write nothing in `$W`
-and report the stop in the conversation only. Either way, tell the operator why
-and wait for their answer (section 6A).
+passed, write ledger entry 1 as usual (`prev: genesis`, section 7) with whatever
+it can hold, the intake, the setup completed and the stop with its reason; if
+they failed, write nothing in `$W` and report the stop in the conversation only.
+Either way, tell the operator why and wait for their answer (section 6A).
 
 ---
 
@@ -173,8 +174,9 @@ pipeline whose patterns contain quotes is saved as a helper script instead.
 
 ### Preflight
 
-Log it as the first commands; every check must pass, and none runs on a host that
-holds the operator's real credentials:
+Log it as the first commands (the two location checks ran before `run.sh`
+existed, so run them again through it first); every check must pass, and none
+runs on a host that holds the operator's real credentials:
 
 - [ ] `id -u` is not `0`.
 - [ ] Network is denied, judged by `curl`'s specific exit codes so that a missing
@@ -191,7 +193,9 @@ holds the operator's real credentials:
 - [ ] `$W` is not inside a repository (no `.git` in `$W` or any parent:
   `d="$W"; while [ "$d" != / ]; do [ -e "$d/.git" ] && echo IN_REPO; d=$(dirname "$d"); done`
   prints nothing) and not under an iCloud, Dropbox, OneDrive or Google Drive folder.
-- [ ] `df -k "$W"` shows the size-bounded filesystem agreed at intake.
+- [ ] `df -k "$W"` shows the size-bounded filesystem agreed at intake (a tmpfs or
+  volume; a per-user quota, which `df` cannot show, is confirmed by the operator
+  and recorded).
 
 If any check fails, stop (section 6A). On an ordinary desktop with no analysis
 environment the preflight fails by design: ask the operator for the environment;
@@ -202,17 +206,29 @@ never improvise one on the host.
 Copy the original to `original/sample.<ext>`, make it read-only (`chmod a-w`), take
 the size (`stat`) and SHA-256 (`shasum -a 256`, or `sha256sum`) of both the
 original and the copy, confirm they match, and record both. Every later finding
-cites this digest. Then `chmod a-w "$W/original"`, so the directory cannot gain or
-lose files either.
+cites this digest. Then `chmod a-w` the `original/` directory (in a comparison,
+each `$W/<version>/original/`), so it cannot gain or lose files either.
 
 A **directory target** (an installed `.app`, an unpacked install tree): copy it with
 `cp -a` to `original/target/` (links stay links), `chmod -R a-w` the copy, and
-write a manifest of each side,
-`find <dir> -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 > "$W/out/manifest-<source|copy>.txt"`.
-They match when the digest columns (`cut -c1-64`) are identical and the file and
-link counts (`find <dir> -type f | wc -l`, `-type l`) agree. The SHA-256 of the
-copy's manifest is the target's identity; a finding about one file (the
-`app.asar`) also cites that file's own digest.
+write a manifest of each side with this helper, saved as
+`$W/scripts/manifest.sh` and locked with the other scripts at step 2:
+
+```sh
+#!/usr/bin/env bash
+# manifest.sh <dir> <out-file>: per-file SHA-256 and link targets, paths relative to <dir>
+set -o pipefail; umask 077
+cd -- "$1" || exit 2
+{ find . -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256
+  find . -type l -exec sh -c 'for l; do printf "link %s -> %s\n" "$l" "$(readlink -- "$l")"; done' sh {} + | LC_ALL=C sort
+} > "$2"
+```
+
+Run it on the source and on the copy (`"$W/scripts/run.sh" "$W/scripts/manifest.sh" <dir> "$W/out/manifest-<source|copy>.txt"`,
+the output path absolute); they match when `cmp` finds the two files identical.
+Paths are relative, so the manifest's SHA-256 is the same on any machine: that
+digest is the target's identity, and a finding about one file (the `app.asar`)
+also cites that file's own line.
 
 ### Handling rules
 
@@ -240,20 +256,33 @@ copy's manifest is the target's identity; a finding about one file (the
   and neutralised by the next rule, not a stop.
 - **Check that nothing escaped.** An extractor can be tricked into writing outside
   its root (binwalk 2.3.3 and earlier did, CVE-2022-4510: use 2.3.4 or v3). Before
-  each extraction `: > "$W/scratch/<task>.start"`; after it, both must hold or it
-  is a stop:
-  `shasum -a 256 -c "$W/scripts/SHA256SUMS"` reports every script `OK`, and
-  `{ find "$W/scripts" "$W/original" "$W/home/.config" -cnewer "$W/scratch/<task>.start" -type f; find "$W/home" -maxdepth 1 -cnewer "$W/scratch/<task>.start" -type f; }`
-  prints nothing. It tests change time (`-cnewer`) because an archive can backdate
-  a file's modification time; it skips `home/tmp` and tools' data caches.
+  each extraction `: > "$W/scratch/<task>.start"`, with no other worker writing;
+  after it, both must hold or it is a stop:
+  1. `shasum -a 256 -c "$W/scripts/SHA256SUMS"` reports every script `OK`;
+  2. this scan of the whole working directory exits 0 and prints nothing:
+
+     ```sh
+     find "$W" \( -path "$ROOT" -o -path "$W/scratch" -o -path "$W/home/tmp" -o -path "$W/home/.cache" \) -prune \
+       -o -type f -cnewer "$W/scratch/<task>.start" ! -name commands.log -print
+     ```
+
+  The scan skips only the new root, `scratch/`, the temp and cache folders and the
+  command logs, so a write into the ledger, `out/`, `original/`, another root or a
+  code-loading path under the sandboxed HOME is caught. It tests change time
+  (`-cnewer`) because an archive can backdate a file's modification time. A hit
+  that is a tool's own first-run file (apktool's framework, for example) is still
+  a stop: the operator clears it, and the ledger records that.
 - **Neutralise links before any recursive read.** Filesystem images legitimately
   contain symlinks, hard links and device nodes. Before `grep -r`, `diff -r`, a
   tree-wide `shasum`, `syft` or any batch read of a root:
-  1. Record and neutralise in one pass, acting only on paths `find` itself
-     produced (the record is NUL-delimited, so a newline in a name cannot mislead):
+  1. Make the root writable to you first (`chmod -R u+w "$ROOT"`; extractors keep
+     an image's read-only directories, where `rm` would fail silently; `chmod -R`
+     does not follow links). Then record and neutralise in one pass, acting only on
+     paths `find` itself produced (the record is NUL-delimited, so a newline in a
+     name cannot mislead):
 
      ```sh
-     export LINKS="$W/out/links-<name>.nul"
+     export LINKS="$W/out/links-<name>.nul"   # a comparison: "$W/<version>/out/links-<name>.nul"
      find "$ROOT" -type l -exec sh -c '
        for l; do
          t=$(readlink -- "$l")
@@ -268,7 +297,9 @@ copy's manifest is the target's identity; a finding about one file (the
      by an empty regular file (`: >` runs only after `rm`, so it never writes
      through a link), even when it would resolve inside the root; only a relative
      link with no `..` is kept. The record keeps every link and its target, so an
-     inventory can still use them.
+     inventory can still use them. Confirm it worked; this must print `0`, or it
+     is a stop:
+     `find "$ROOT" -type l -exec sh -c 'for l; do case "$(readlink -- "$l")" in /*|..|../*|*/../*|*/..) echo BAD;; esac; done' sh {} + | wc -l`
   2. Skip device nodes. Never use `grep -R`, `find -L`, `cp -L`, or `diff` without
      `--no-dereference`.
   Before reading any single file, confirm its `realpath` is inside the root.
@@ -306,7 +337,8 @@ Do not infer the format from the file extension. Read the bytes.
 - `xxd <path> | head` / `head -c 64 <path> | xxd`: magic bytes when `file` is
   unsure.
 - For a container you suspect holds more (an installer, a firmware image, a
-  packed executable), note it and route to section 5 rather than guessing.
+  packed executable), note it and take its section 3 row, which names the
+  unpacker (section 5), rather than guessing.
 
 Map what you find to a route in section 3. When one artifact nests another (an
 APK inside a ZIP, a native blob inside firmware), identify the outer layer,
@@ -393,15 +425,15 @@ Depth costs time and tokens; spend it only where the question needs it.
 
 Installers, firmware and packed executables carry the real target inside.
 
-- `binwalk <image>` to map embedded contents; `binwalk -e -d <outdir>` (binwalk v3; v2 uses `-C`) or `unblob -e <outdir>` to
+- **Firmware and unknown blobs:** `binwalk <image>` to map embedded contents; `binwalk -e -d <outdir>` (binwalk v3; v2 uses `-C`) or `unblob -e <outdir>` to
   carve them into a **new** extraction root `$W/extracted/<name>/`, never an existing
   one and never anywhere else.
 - Re-identify every carved payload (section 2) and route each (section 3).
 - A payload carved or unpacked from the approved artifact (the `app.asar` in a
   bundle, the rootfs in a firmware image, a jar inside a jar) is part of that
   artifact: it needs no new approval for the approved question, only its own
-  route. A new ledger entry and approval are needed only when the question turns
-  to a component itself (section 0).
+  route. A new ledger entry and approval are needed when the question turns to a
+  component itself, or to any separate artifact, question or mode (section 0).
 - Record what each layer was and where it came from in the image, so the chain
   from the original bytes to the analysed payload is auditable.
 - A carve that would execute anything (an auto-run unpacker, a self-extracting
@@ -548,7 +580,8 @@ version-diffing, corroboration and verification workflows.
   secret-bearing file the ledger names is never a deliverable.
 - **Retention and cleanup.** Hand the original, its digests, the ledger and the
   report to the operator's evidence store. Delete working extractions on
-  completion or abort, only by paths whose `realpath` is inside the working
+  completion, or on abort once the operator has answered the stop (they are its
+  evidence until then), only by paths whose `realpath` is inside the working
   directory (no globs, no `sudo`). Never write sample-derived content to agent
   memory, notes, or synced stores. Never delete the original, the ledger or the
   report, and never leave a live session or sandbox running. Record the data-

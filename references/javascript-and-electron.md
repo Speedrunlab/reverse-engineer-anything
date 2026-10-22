@@ -36,7 +36,7 @@ read only what the question needs.
   formatter with config and plugins off and on a copy in `$W/scratch/`, because
   a formatter searches upward for `.prettierrc.js`/`prettier.config.js` and a
   `package.json` `"prettier"` key and will load a plugin a hostile bundle planted:
-  `prettier --no-config --no-editorconfig` run from the empty `$W/scratch/`
+  `prettier --no-config --no-editorconfig` run from a fresh empty `$W/scratch/<task>/`
   (Prettier 3 loads a plugin only when config names one, which `--no-config`
   blocks), or js-beautify with `--config` pointing at an empty `{}` file (its CLI
   otherwise reads a `.jsbeautifyrc` from parent directories).

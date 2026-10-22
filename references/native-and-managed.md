@@ -87,8 +87,9 @@ On macOS, `readelf` and `nm -D` are not installed by default: use `llvm-readelf`
 
 ## Go
 
-- `go version -m <bin>` prints the Go version, main module, dependency modules
-  and build settings straight from the binary, often the fastest answer to
+- `go version -m <bin> > "$W/out/go-version.txt"` records the Go version, main
+  module, dependency modules and build settings straight from the binary (build
+  settings can carry `-ldflags -X` values, so query the file), often the fastest answer to
   "what is this built from".
 - Go binaries are large and statically linked; `strings` surfaces package paths.
   For logic, use a current Ghidra release: it recovers Go function names and
@@ -107,7 +108,7 @@ On macOS, `readelf` and `nm -D` are not installed by default: use `llvm-readelf`
 
 ## WebAssembly
 
-- `wasm2wat <file>.wasm -o <file>.wat` for the text form; `wasm-objdump -x` for
+- `wasm2wat <file>.wasm -o "$W/out/<name>.wat"` for the text form; `wasm-objdump -x` for
   the import/export/section inventory. `wasm-decompile` (a C-like view) shipped
   in WABT 1.0.41 and earlier and was removed after; pin that version if you want it.
 - Note the imports (what the host must provide) and exports (the module's API).
@@ -130,7 +131,7 @@ On macOS, `readelf` and `nm -D` are not installed by default: use `llvm-readelf`
 `.jar`, `.war` and `.ear` are zip archives; `.class` is bytecode. Never `java -jar`
 a sample.
 
-- `unzip -l <jar>` to inventory; read `META-INF/MANIFEST.MF` (Main-Class,
+- `unzip -l <jar> | cat -v` to inventory; read `META-INF/MANIFEST.MF` (Main-Class,
   versions) and any `META-INF/maven/**/pom.properties` for component versions.
 - `javap -c -p -v <Class>` disassembles bytecode and shows the constant pool.
   Decompile with **CFR** (`java -jar cfr.jar --outputdir $W/out/cfr <jar>`, which
@@ -163,14 +164,16 @@ a sample.
   ```
 
   Run it as `"$W/scripts/run.sh" "$W/scripts/endpoints.sh" "$ROOT" "$W/out/endpoints.txt"`,
-  with `$ROOT` the decompiled tree. It masks URL user-info (including a password
+  with `$ROOT` set to the tree searched: an extraction root, or a decompiler's
+  output tree under `$W/out/`, which gets the same SKILL.md section 1 link step
+  first. It masks URL user-info (including a password
   containing `@`), the Oracle `user/pass@` form and common secret query parameters.
   Exit 1 with an empty file means nothing matched; exit 2 is an error (a missing
   tree, or no GNU sed), never "no endpoints". For a credential's location, list
   the files with `grep -rEl` and the same pattern. A token embedded in a
   URL path (a webhook) cannot be detected generically, so treat `endpoints.txt` as
   secret-bearing: keep it at mode 0600, report hosts
-  (`cut -d/ -f3 "$W/out/endpoints.txt" | sort -u`) rather than full URLs, and report
+  (`cut -d/ -f3 "$W/out/endpoints.txt" | sort -u | cat -v`) rather than full URLs, and report
   a credential as file, key, type and length only (SKILL.md section 1).
 - Dependencies for an SBOM: the `pom.properties` groupId/artifactId/version, or
   hashes of bundled jars matched against the operator's known-set.
@@ -185,7 +188,7 @@ A `.app` is a directory; a `.pkg`/`.dmg` wraps one. Read, never launch.
   `Contents/MacOS/<name>` (route it above).
 - `codesign -dvvv --entitlements :- <App>.app` for the signing identity and the
   entitlements (pipe to `plutil -p -` to read them); `lipo -info <binary>` and
-  `lipo -thin` to pick an architecture.
+  `lipo -thin <arch> <binary> -output "$W/out/<name>-<arch>"` to pick an architecture.
 - **Signed and notarised?** `codesign -dvvv <App>.app 2>&1 | grep -E
   'Authority|TeamIdentifier|flags|Timestamp'` shows the Developer ID chain and the
   hardened-runtime flag. Notarisation that has been stapled: `xcrun stapler
@@ -206,8 +209,9 @@ A `.app` is a directory; a `.pkg`/`.dmg` wraps one. Read, never launch.
 Read statically; a core holds process memory, so the secret rules (SKILL.md
 section 1) apply in full.
 
-- ELF core: `readelf -n core` lists the core notes (signal in `NT_PRSTATUS`,
-  mapped files in `NT_FILE`); `eu-unstrip -n --core core` pairs each mapping with
+- ELF core: `readelf -n core > "$W/out/core-notes.txt"` lists the core notes
+  (signal in `NT_PRSTATUS`, mapped files in `NT_FILE`, and the process command
+  line, which can hold a secret, so query the file); `eu-unstrip -n --core core` pairs each mapping with
   its build-id; `eu-stack --core core -e <bin>` gives a backtrace;
   `gdb -nx -iex "set auto-load off" -iex "set print frame-arguments none" --batch -ex bt -c core <bin> > "$W/out/bt.txt"`
   (both `-nx` and `auto-load off`, never `run`/`start`/`call`, and never `bt full`:

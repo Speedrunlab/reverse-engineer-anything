@@ -46,18 +46,26 @@ A common and high-value task: what changed between two releases.
 - Normalise both sides the same way before diffing: extract/decompile/format
   each with the **same tool at the same version and settings**, or the diff is
   dominated by tooling noise.
-- **Neutralise links first** (SKILL.md section 1): GNU `diff` follows symlinks, so
-  a planted link would pull outside content in. Replace out-of-tree links with
-  empty files before diffing, and use `--no-dereference` where the local `diff`
+- Give both versions' extraction roots the **same name** (`$W/v1.2/extracted/app/`
+  and `$W/v1.3/extracted/app/`), so files pair up instead of all reading as
+  "Only in"; each version keeps its link record and manifests in its own
+  `$W/<version>/out/`.
+- **Neutralise links first**: apply the SKILL.md section 1 link step to each root.
+  GNU `diff` follows symlinks, so a planted link would pull outside content in.
+  Use `--no-dereference` where the local `diff`
   supports it (GNU diffutils 3.3+; the macOS BSD `diff` may not, so run diffs in
   the Linux VM).
+- Compare the two link records as well, since a retargeted link is a change the
+  file diff cannot show: for each version, `tr '\0' '\n' < "$W/<version>/out/links-<name>.nul" | sed "s|^$W/<version>/extracted/<name>/||" > "$W/<version>/out/links-<name>.txt"`,
+  then `diff` the two `.txt` files into `$W/out/`.
 - **Summary first.** `"$W/scripts/run.sh" diff -rq --no-dereference "$W/v1.2/extracted"
-  "$W/v1.3/extracted" > "$W/out/diff-files.txt"` lists which files changed; then
+  "$W/v1.3/extracted" > "$W/out/diff-files.txt"` lists which files changed (exit 0:
+  no differences; 1: differences found, the normal result; 2: an error); then
   `diff -u` one file at a time into `$W/out/`, reading with `head`. Never pour a
   whole-tree diff into your context.
 - **Obfuscated or minified builds** rename symbols between versions, so a code
   diff is mostly noise. Compare what survives renaming: manifests and permissions
-  (`aapt2 dump badging` for each APK), component lists, native libraries and
+  (`aapt2 dump badging` for each APK, to a file and read as the Android guide says), component lists, native libraries and
   asset hashes (`shasum -a 256` per file), string tables and import lists.
 - Report "added" or "removed" only when both sides were fully inventoried; state
   the boundary otherwise.

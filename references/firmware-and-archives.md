@@ -36,12 +36,12 @@ then route each payload.
 Unpack, never run. (`7zz` is official 7-Zip; `7z` is p7zip, either works for ZIP.)
 
 Every tool below gets an explicit output directory under `$W/extracted/<name>/`
-(their default is the current directory) and runs from `$W/scratch/`.
+(their default is the current directory) and runs from a fresh `$W/scratch/<task>/`.
 
 - **General archive:** `7zz l -slt <archive>` to inventory and check paths, then
   `7zz x <archive> -o<$W/extracted/name>`.
-- **Windows MSI:** `msiinfo tables <f>.msi` then `msiinfo export <f>.msi <table>`
-  per table, and `msiextract -C <dir> <f>.msi` (msitools), or `lessmsi` on Windows;
+- **Windows MSI:** `msiinfo tables <f>.msi` then `msiinfo export <f>.msi <table> > "$W/out/msi-<table>.txt"`
+  per table (tables can hold property values; query the files, never print them whole), and `msiextract -C <dir> <f>.msi` (msitools), or `lessmsi` on Windows;
   `7zz` sees MSI streams only by cryptic names, so prefer msitools. **Inno Setup:**
   `innoextract -d <dir>`. **NSIS:** `7zz x`. **InstallShield:** `unshield -d <dir>`.
   **CAB:** `cabextract -d <dir>`. **MSIX/AppX:** unzip and read `AppxManifest.xml`.
