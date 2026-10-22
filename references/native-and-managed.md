@@ -24,7 +24,7 @@ Record the architecture and bitness: a decompiler needs the right language/
 calling-convention, and a wrong guess produces confident nonsense.
 
 On macOS, `readelf` and `nm -D` are not installed by default: use `llvm-readelf`
-(from LLVM) or `greadelf` (Homebrew `binutils`); for Mach-O files use `otool` and
+(from LLVM) or `$(brew --prefix binutils)/bin/readelf` (Homebrew `binutils`, keg-only); for Mach-O files use `otool` and
 `nm`.
 
 ## Common questions
@@ -69,6 +69,14 @@ On macOS, `readelf` and `nm -D` are not installed by default: use `llvm-readelf`
   to source. Still separate what the IL shows from what you infer about intent.
 - Obfuscated assemblies (renamed symbols, control-flow flattening) are common;
   note obfuscation as an observation and keep conclusions bounded.
+- **What config does it read, and what does it do with the values?** Grep the
+  decompiled tree for `ConfigurationManager`, `AppSettings`, `GetSection`,
+  `GetConnectionString`, `IConfiguration`, `GetValue`, `Bind<`, `IOptions<`,
+  `Environment.GetEnvironmentVariable`, and file reads (`File.ReadAllText`,
+  `XmlDocument.Load`, `JsonSerializer`). Keys bound through an options class are
+  the class's property names, not string literals, so read the bound type. For
+  each key, trace its default and where the value flows (a connection, a branch,
+  a path). Check embedded resources and any shipped `*.config`/`appsettings*.json`.
 
 ## Go
 
@@ -84,7 +92,7 @@ On macOS, `readelf` and `nm -D` are not installed by default: use `llvm-readelf`
 
 - If built with `cargo auditable`, the `.dep-v0` section lists the dependency
   tree as zlib-compressed JSON: read it with `rust-audit-info <bin>` or
-  `cargo audit bin <bin>` (a raw section dump is just compressed bytes). A
+  `rust-audit-info` only (it works offline; `cargo audit` fetches an advisory DB and is for vulnerabilities, not inventory). A
   missing section is absence of that metadata, not proof of no dependencies.
 - Otherwise treat it as a native binary (Ghidra/rizin); Rust's monomorphised,
   inlined code is dense, so stay seed-driven.
@@ -108,3 +116,45 @@ On macOS, `readelf` and `nm -D` are not installed by default: use `llvm-readelf`
   is reproducible.
 - "Uses library X" from a string or an import is linkage, not proof a code path
   runs. Show the call site before claiming behaviour.
+
+## Java and JVM
+
+`.jar`, `.war` and `.ear` are zip archives; `.class` is bytecode. Never `java -jar`
+a sample.
+
+- `unzip -l <jar>` to inventory; read `META-INF/MANIFEST.MF` (Main-Class,
+  versions) and any `META-INF/maven/**/pom.properties` for component versions.
+- `javap -c -p -v <Class>` disassembles bytecode and shows the constant pool.
+  Decompile with **CFR** (`java -jar cfr.jar <jar>`) or **Vineflower**; JADX also
+  reads `.jar`. Treat decompiler output as a reconstruction.
+- `jarsigner -verify -verbose -certs <jar>` reports signing; an unsigned or
+  mismatched jar is a provenance finding.
+- Dependencies for an SBOM: the `pom.properties` groupId/artifactId/version, or
+  hashes of bundled jars matched against a known set.
+
+## macOS bundles
+
+A `.app` is a directory; a `.pkg`/`.dmg` wraps one. Read, never launch.
+
+- `plutil -p <App>.app/Contents/Info.plist` for identifiers, versions and the
+  executable name; the Mach-O is at `Contents/MacOS/<name>` (route it above).
+- `codesign -dvvv --entitlements :- <App>.app` for the signing identity and
+  entitlements; `lipo -info <binary>` and `lipo -thin` to pick an architecture.
+- `.pkg`: `pkgutil --check-signature` and `pkgutil --expand-full` (or `xar -xf`).
+  `.dmg`: unpack with `7zz x`, do not `hdiutil attach` (that mounts it).
+- ASAR, embedded frameworks and XPC services under `Contents/` are each their own
+  target.
+
+## Crash and core dumps
+
+Read statically; a core holds process memory, so the secret rules (section 1)
+apply in full.
+
+- ELF core: `readelf -n core` for notes (signal, build-ids, `NT_FILE` maps);
+  `eu-stack --core core -e <bin>` for a backtrace; `gdb -nx --batch -c core <bin>`
+  (`-nx` blocks auto-loaded scripts). Match the build-id to symbols before trusting
+  frame names.
+- Windows minidump: Breakpad `minidump_stackwalk <dmp> <symbols>`, or the Python
+  `minidump` library.
+- macOS `.ips`/`.crash` are text (JSON for `.ips`): read with `jq`/`cat`;
+  symbolicate with `atos` or `llvm-symbolizer`.

@@ -10,7 +10,7 @@ Free and open source · MIT Licence · Built by [Speedrun AI Labs](https://www.s
 
 When a question depends on a shipped artifact you can't read the source of, which library a binary bundles, what an Electron app sends home, how a firmware image is laid out, what changed between two releases, you reach for reverse-engineering tools. This skill gives an AI agent a disciplined way to do that: route each target to the right tool, stay static and read-only by default, and tie every conclusion to evidence.
 
-It is **self-contained and agent-agnostic**. It drives standard open-source tools (Ghidra, radare2, binwalk, JADX, apktool, WABT, tshark, and friends) through the agent's own terminal and file tools. There is **no bundled server to install, no `npx …@latest`, no `curl | bash`, and no edits to any agent's global config**, the whole point, so it's safe to hand to everyone on a team, including on machines that hold credentials.
+It is **self-contained and agent-agnostic**. It drives standard open-source tools (Ghidra, radare2, binwalk, JADX, apktool, WABT, tshark, and friends) through the agent's own terminal and file tools. There is **no bundled server to install, no `npx …@latest`, no `curl | bash`, and no edits to any agent's global config**, the whole point. It still runs in the clean, network-less environment described in the skill (section 1), not directly on a machine holding business credentials.
 
 ---
 
@@ -35,6 +35,32 @@ It is **self-contained and agent-agnostic**. It drives standard open-source tool
 
 ---
 
+## What's new in v1.2.0 (22 Oct 2026)
+
+Hardening round 2 (three fresh reviews). Two reviewers independently caught that
+round 1's link rule would block every firmware root filesystem, and that the
+"third-party component" clause blocked ordinary work; both are fixed.
+
+- Extraction limits are concrete and workable (`timeout`, size/file/depth caps,
+  `realpath` containment); filesystem links and device nodes are recorded, not
+  followed, instead of rejected.
+- Identifying a bundled component is in scope; reading its internals needs its own
+  approval. Authority record adds a security contact, a licence-terms check, and
+  an approver who is not the requester.
+- Work environment is preflight-tested, not just asserted; sample-derived names
+  never reach a shell; subagents are tightly scoped; the ledger is tamper-evident.
+- Live analysis uses a recorded session envelope (so a debugger session is not
+  stalled by per-command approval), with egress only to endpoints the organisation
+  operates or may test.
+- New routes and recipes: software bill of materials (SBOM) for a tree or image,
+  Android permission-to-code mapping, .NET config-read tracing, Java/JVM, macOS
+  app bundles, Windows/Linux installers and packages, crash and core dumps.
+- Accuracy fixes: `7zz` vs `7z`, `rust-audit-info` (not `cargo audit bin`, which
+  needs the network), `--only-binary` for pip, AppImage squashfs offset, macOS
+  `readelf`, `android:usesCleartextTraffic`, macOS `app.asar` path.
+
+---
+
 ## What's new in v1.1.0 (22 Oct 2026)
 
 Hardening round 1 (three independent reviews: coverage, safety, agent usability):
@@ -55,7 +81,7 @@ Hardening round 1 (three independent reviews: coverage, safety, agent usability)
 mkdir -p ~/.claude/skills
 git clone https://github.com/Speedrunlab/reverse-engineer-anything.git ~/.claude/skills/reverse-engineer-anything
 ```
-Then run: `/reverse-engineer-anything`. The skill assumes the open-source tools it names are installed; see `references/toolchain.md` for the install rules and tool list (pin each version, verify each download).
+Then run: `/reverse-engineer-anything`. The skill assumes the open-source tools it names are installed; see `references/toolchain.md` for the install rules and tool list (pin each version, verify each download). For regulated or production use, install from an internal mirror at a pinned tag and verify the commit, and run inside the analysis environment of section 1.
 
 ### OpenClaw
 ```bash
@@ -74,10 +100,10 @@ Copy `SKILL.md` into the agent's skills directory (or load it into its instructi
 SKILL.md                         the router: gate → identify → route → work → report
 references/
   toolchain.md                   install rules and tool list; nothing auto-fetches
-  native-and-managed.md          ELF/Mach-O/PE, .NET, Go, Rust, WebAssembly
+  native-and-managed.md          ELF/Mach-O/PE, .NET, Go, Rust, WebAssembly, Java/JVM, macOS bundles, crash dumps
   javascript-and-electron.md     ASAR, minified bundles, source maps
   android.md                     APK/AAB manifest, resources, bytecode
-  firmware-and-archives.md       binwalk/unblob, installers, model files, SQLite
+  firmware-and-archives.md       binwalk/unblob, installers and OS packages, SBOM, model files, SQLite
   network-and-runtime.md         recorded captures (static) + gated live observation
   evidence-and-reporting.md      the ledger, version diffing, verification
 templates/

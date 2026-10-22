@@ -7,7 +7,8 @@ archive). Static and read-only; cite the sample's SHA-256.
 ## Electron: find and extract the app layer
 
 An Electron app is a Chromium + Node shell wrapping your real target: the app's
-JavaScript, usually in `resources/app.asar` (or an unpacked `resources/app/`).
+JavaScript, in `resources/app.asar` (Windows/Linux) or
+`<App>.app/Contents/Resources/app.asar` (macOS), or an unpacked `resources/app/`.
 
 - Locate `app.asar` inside the installed app or the package you extracted. From
   an installer, unpack without running it: a DMG or NSIS `.exe` with `7z x`, an

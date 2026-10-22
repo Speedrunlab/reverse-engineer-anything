@@ -29,16 +29,29 @@ then route each payload.
   approval (SKILL.md section 6). Carving extracts bytes; it must not execute the
   target.
 
-## Archives and installers
+## Installers and OS packages
 
-- `7z l -slt <archive>` to inventory (check paths before extracting), then
-  `7z x <archive> -o<work/extracted/name>` to extract. Handles ZIP, many installer
-  formats, and more.
-- A platform installer (DMG, MSI, MSIX, deb/rpm, PyInstaller executable) wraps a
-  payload: inventory members, extract, re-identify, route. For a PyInstaller
-  executable the application is the archive layer, not the bootloader stub.
-- An AppImage is unpacked with `unsquashfs` or `7z`; its own
-  `--appimage-extract` option runs the file, which is live mode.
+Unpack, never run. (`7zz` is official 7-Zip; `7z` is p7zip, either works for ZIP.)
+
+- **General archive:** `7zz l -slt <archive>` to inventory and check paths, then
+  `7zz x <archive> -o<work/extracted/name>`.
+- **Windows MSI:** `msiinfo export <f>.msi` and `msiextract` (msitools), or
+  `lessmsi` on Windows; `7zz` sees MSI streams only by cryptic names, so prefer
+  msitools. **Inno Setup:** `innoextract`. **NSIS:** `7zz x`. **InstallShield:**
+  `unshield`. **CAB:** `cabextract`. **MSIX/AppX:** unzip and read `AppxManifest.xml`.
+  Never `msiexec /a`.
+- **Linux packages:** `dpkg-deb -c <f>.deb` (list) and `-x` (extract);
+  `rpm -qp --scripts <f>.rpm` (read maintainer scripts, never run them) and
+  `rpm2cpio <f>.rpm | cpio -idmv`. The maintainer scripts are part of the review.
+- **macOS `.pkg`/`.dmg`:** `pkgutil --expand-full` or `xar -xf` for a pkg; `7zz x`
+  for a dmg. Do not `hdiutil attach` (that mounts it).
+- **PyInstaller executable:** the application is the archive layer, not the
+  bootloader stub; `pyi-archive_viewer` or pyinstxtractor lists members, then
+  decompile the `.pyc` (`pycdc`). Do not `marshal.load` untrusted `.pyc`.
+- **AppImage:** it is an ELF with a squashfs appended. Its own
+  `--appimage-extract` runs the file (live mode); instead read the squashfs offset
+  from the ELF section headers and `unsquashfs -o <offset>`, or `7zz x`.
+- After any unpack, re-identify each payload (section 2) and route it.
 
 ## Model files
 
@@ -67,6 +80,29 @@ then route each payload.
   the identity of each file.
 - Redact: app databases hold tokens, messages and personal data. Report shape
   and the answer, not raw rows of personal content.
+
+## Component inventory (SBOM)
+
+"Which open-source components and versions are inside this image?" for a bill of
+materials. Work from strongest evidence to weakest, one ledger entry per method:
+
+1. **Package databases** (highest confidence): `/var/lib/dpkg/status`,
+   `/var/lib/opkg/status`, `/var/lib/pacman/local/`, an RPM database, and
+   `/etc/os-release`. These give name and version directly.
+2. **Shared libraries:** the `*.so*` file names and `readelf -d <lib> | grep SONAME`.
+3. **Banners in binaries:** `strings -a -n 6` for BusyBox (`BusyBox v1.x`), the
+   kernel (`Linux version ...`), the bootloader, OpenSSL (`OpenSSL 3.x`), zlib and
+   libc. A banner inside the file is good evidence; a version from a path or
+   filename alone is weak.
+4. **Licence files** under `/usr/share/doc`, `LICENSE`, `NOTICE`.
+
+Write the result to `work/out/sbom.cdx.json` in CycloneDX form (name, version,
+path, detection method, confidence). If the operator has staged **syft** and its
+database, `syft dir:work/extracted -o cyclonedx-json` cross-checks the manual
+pass; keep its DB auto-update off (no network). Confidence is high when a package
+DB or a SONAME plus a banner agree; medium for a single banner; low for a path or
+filename. State coverage: a clean extraction inventoried, or carving that may have
+missed regions.
 
 ## Pitfalls
 

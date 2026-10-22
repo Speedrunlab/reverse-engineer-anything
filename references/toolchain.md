@@ -20,14 +20,17 @@ process that runs unreviewed code at install time.
    running an installer. A checksum published next to the file proves it arrived
    intact, not who made it; a signature or an out-of-band hash does both. Never pipe
    a script into a shell.
-4. **Stop install scripts.** Use `npm ci --ignore-scripts`,
-   `pip install --require-hashes` and `cargo install --locked`. A dry run
-   (`brew install --dry-run`, `apt-get -s install`) shows what would change but
-   does not stop scripts; use it to spot an install that would upgrade shared
-   system libraries, and stop if it would.
-5. **Install once, for the host.** These are developer tools; install them to
-   the machine, not per-analysis. The skill assumes they are present and says so
-   when one is missing, it never installs on the fly mid-task.
+4. **Reduce install-time code.** `npm ci --ignore-scripts` stops npm lifecycle
+   scripts. For Python prefer wheels (`pip install --require-hashes
+   --only-binary=:all:`); an sdist still runs its build backend. `cargo install
+   --locked` pins versions but `build.rs` and proc-macros still run, so build Rust
+   tools in a sandbox. A dry run (`brew install --dry-run`, `apt-get -s install`)
+   shows what would change but does not stop scripts; use it to catch an install
+   that would upgrade shared system libraries, and stop if it would.
+5. **Install into the analysis image or VM, not the credentialed host.** These are
+   developer tools; build them once into the pinned image the analysis runs in
+   (SKILL.md section 1). The skill assumes they are present and says so when one is
+   missing; it never installs on the fly mid-task.
 6. **No tool here needs a global agent-config change.** If a workflow seems to
    need one, that is a signal to stop and reconsider, not to edit `~/.claude.json`
    or an MCP config.
@@ -42,13 +45,20 @@ process that runs unreviewed code at install time.
 | Mach-O (macOS) | `otool`, `nm`; `codesign -d` | `otool`/`nm` from Xcode command-line tools; `codesign` is built into macOS | `codesign -dvvv` reads signing identity. |
 | .NET / managed | **ILSpy** / `ilspycmd` | github.com/icsharpcode/ILSpy | Decompiles CLI assemblies to C#. |
 | Go binaries | `go version -m <bin>` | go.dev | Reads module/build metadata straight from the binary. |
-| Rust (built with cargo-auditable) | `rust-audit-info`, `cargo audit bin` | github.com/rust-secure-code/cargo-auditable, RustSec `cargo-audit` | Read the `.dep-v0` dependency section. |
+| Rust (built with cargo-auditable) | `rust-audit-info` | github.com/rust-secure-code/rust-audit | List the `.dep-v0` dependency tree offline. |
+| .NET IL dump | `monodis` | Mono | Dump IL and metadata without a GUI. |
+| ELF notes / cores (macOS host) | `llvm-readelf`, `eu-readelf`/`eu-stack` (elfutils) | LLVM, sourceware.org/elfutils | Apple `nm` can't read ELF; use these or `$(brew --prefix binutils)/bin/readelf`. |
+| Pickle inspection | `python3 -m pickletools` (stdlib) | Python | Disassemble a pickle without loading it. |
+| Java / JVM | `javap` (JDK), **CFR** or **Vineflower**, `jarsigner` | jdk; github.com/leibnitz27/cfr, github.com/Vineflower/vineflower | Disassemble and decompile `.class`/`.jar`. |
+| macOS bundles / packages | `plutil`, `codesign`, `lipo`, `pkgutil` | built into macOS | Read Info.plist, entitlements, architectures, package signatures. |
+| Windows / Linux installers | `msitools` (`msiinfo`, `msiextract`), `innoextract`, `dpkg-deb`, `rpm2cpio`, `cabextract` | distro packages | Unpack installers and OS packages without running them. |
+| SBOM / component scan | **syft** (+ `grype` or `osv-scanner`, DB staged) | github.com/anchore/syft | Inventory components in a tree or image; disable DB auto-update. |
 | Android | **apktool**, **JADX**, `aapt2` | github.com/iBotPeaches/Apktool, github.com/skylot/jadx | apktool for resources/manifest, JADX for Java/Kotlin. |
 | JavaScript / Electron | `@electron/asar`, `prettier` (formatting), the `source-map` package | npm (pinned, `--ignore-scripts`) | Extract ASAR, then format and map back. |
 | Android extras | `bundletool`, `apksigner` | github.com/google/bundletool; Android SDK build-tools | AAB to APK; signing certificates. |
 | PE signatures | `osslsigncode` | github.com/mtrojnar/osslsigncode | Read Authenticode signatures. |
 | JSON (HAR, metadata) | `jq` | jqlang.org | Query HAR files and JSON output. |
-| Firmware / packed | **binwalk**, **unblob**, `7z`, `unsquashfs` | github.com/ReFirmLabs/binwalk, github.com/onekey-sec/unblob | Carve embedded filesystems and blobs. |
+| Firmware / packed | **binwalk**, **unblob**, `7zz`, `unsquashfs` | github.com/ReFirmLabs/binwalk, github.com/onekey-sec/unblob, 7-zip.org | Carve embedded filesystems and blobs. `7zz` is official 7-Zip; `7z` is p7zip. |
 | WebAssembly | **WABT** (`wasm2wat`, `wasm-objdump`) | github.com/WebAssembly/wabt | Text form and section inventory; `wasm-decompile` only in WABT 1.0.41 and earlier. |
 | Network captures | **Wireshark**/`tshark`, **mitmproxy** | wireshark.org, mitmproxy.org | Read saved pcap/HAR/flows; capture only in a controlled env. |
 | SQLite | `sqlite3` | sqlite.org | Open a **copy** read-only (`sqlite3 -readonly copy.db`). |

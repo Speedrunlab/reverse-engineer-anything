@@ -13,7 +13,7 @@ The manifest answers a lot before any code:
 - Read `AndroidManifest.xml`: the package name, declared permissions, exported
   components (activities, services, receivers, providers), intent filters, the
   SDK levels (`android:minSdkVersion`/`android:targetSdkVersion`; apktool moves
-  them into `apktool.yml` under `sdkInfo`), and `android:debuggable`/`usesCleartextTraffic` flags.
+  them into `apktool.yml` under `sdkInfo`), and the `<application>` flags `android:debuggable` and `android:usesCleartextTraffic`.
   Exported components and broad permissions are where behaviour and attack
   surface concentrate.
 - `aapt2 dump badging <app>.apk` gives a quick summary (package, version,
@@ -31,9 +31,17 @@ The manifest answers a lot before any code:
 
 ## Common questions
 
-- **Permissions and data access**: the manifest's `uses-permission` list, plus
-  the APIs the code actually calls. A declared permission is capability, not
-  proof of use; show the call.
+- **Permissions, and where each is used**: list `uses-permission` from the
+  manifest, then map each to its guarded API in the JADX tree. For example
+  `ACCESS_FINE_LOCATION` to `requestLocationUpdates`/`getLastLocation`, `CAMERA`
+  to `android.hardware.camera2`/`androidx.camera`, `READ_CONTACTS` to
+  `ContactsContract`, `RECORD_AUDIO` to `AudioRecord`/`MediaRecorder`. Grep for
+  those APIs and for the runtime-permission calls `checkSelfPermission`,
+  `requestPermissions`, and the literal `"android.permission.<NAME>"`. Cite the
+  class and method (JADX line numbers are not stable across versions) and mark app
+  code versus an SDK package prefix. A permission with no call in the code you
+  searched is reported as exactly that, with the search boundary. One row per
+  permission goes in an appendix table, not the main findings table.
 - **Network endpoints**: grep the decompiled tree and resource strings
   (`res/values/strings.xml`, `assets/`) for hosts and URLs. List them; mark which
   are reached by code you can see.

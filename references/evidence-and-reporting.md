@@ -13,7 +13,7 @@ Keep one running record for the whole investigation. Every finding is one entry:
   location (function, offset, file path, packet, table).
 - **Observation**: what the tool showed, verbatim enough to reproduce.
 - **Inference**: what you conclude from it, marked as inference.
-- **Confidence** and **evidence type** (static / runtime / metadata).
+- **Confidence** and **evidence type** (static / live / metadata).
 - **Unknowns**: what this does not settle, and the boundary of any negative
   claim.
 
@@ -38,9 +38,10 @@ observed execution. "The code can reach host X" is not "the app contacted X".
 
 A common and high-value task: what changed between two releases.
 
-- **Layout.** Each version gets its own directory and its own digest in the
-  ledger: `work/v1.2/` and `work/v1.3/`, each with `original/`, `extracted/` and
-  `out/`. The report lists both identities.
+- **Layout.** Each version gets its own subdirectory and its own digest:
+  `work/v1.2/` and `work/v1.3/`, each with `original/`, `extracted/` and `out/`.
+  The one `work/ledger.md`, `work/commands.log` and `work/out/` (for the diffs)
+  stay at the top level. The report lists both identities.
 - Normalise both sides the same way before diffing: extract/decompile/format
   each with the **same tool at the same version and settings**, or the diff is
   dominated by tooling noise.

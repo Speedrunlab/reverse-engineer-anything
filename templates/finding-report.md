@@ -12,6 +12,7 @@
 - **Mode:** static | live
 - **Live steps (if any):** <each approval verbatim, approver, time, environment checks passed, teardown confirmed>
 - **Analyst / host / skill version / date:** <who, where, version, when>
+- **Handling:** <how this report may be shared, e.g. internal only>
 
 ## Summary
 
@@ -19,13 +20,15 @@
 
 ## Findings
 
-| # | Question | Observation (tool and version · command · location) | Inference | Confidence | Unknowns / boundary |
-|---|---|---|---|---|---|
-| 1 | | | | | |
-| 2 | | | | | |
+| # | Question | Observation (tool and version · command · location) | Inference | Evidence type | Confidence | Unknowns / boundary |
+|---|---|---|---|---|---|---|
+| 1 | | | | | | |
+| 2 | | | | | | |
 
 > Observation = what the tool showed, reproducible from the digest + command.
 > Inference = what you conclude, marked as such. Keep them in separate columns.
+> Evidence type = static / live / metadata. Large per-item results (a permission
+> map, an SBOM) go in an appendix table, not this one.
 > Confidence: high = two independent signals, medium = one, low = a string or name alone.
 
 ## Tools used
@@ -50,4 +53,6 @@
 
 <Chain of custody for nested payloads (what was carved from where), the ledger
 hash at close, where the evidence is retained, and anything a future pass should
-know. No raw credentials or personal data.>
+know. A vulnerability found in third-party code is reported to the operator;
+disclosing it is the organisation's decision, not the analyst's. No raw
+credentials or personal data.>
