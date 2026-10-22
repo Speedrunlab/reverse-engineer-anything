@@ -11,7 +11,10 @@ The manifest answers a lot before any code:
 - `apktool d <app>.apk -o <outdir>` decodes the manifest and resources into
   readable form, with `<outdir>` a new extraction root `$W/extracted/apktool-<name>/`
   (never an existing directory: apktool refuses one, and `-f` would delete it).
-- Read `AndroidManifest.xml`: the package name, declared permissions, exported
+- Search the decoded `AndroidManifest.xml` rather than reading it whole, because
+  `<meta-data>` values can hold API keys:
+  `grep -nE '<(manifest|uses-permission|permission|activity|activity-alias|service|receiver|provider|application|intent-filter|action)' <outdir>/AndroidManifest.xml | cut -c1-200 | cat -v`.
+  Count `<meta-data>` entries; report their names only. It gives the package name, declared permissions, exported
   components (activities, services, receivers, providers), intent filters, the
   SDK levels (`android:minSdkVersion`/`android:targetSdkVersion`; apktool moves
   them into `apktool.yml` under `sdkInfo`), and the `<application>` flags `android:debuggable` and `android:usesCleartextTraffic`.

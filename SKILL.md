@@ -4,7 +4,7 @@ description: "Reverse Engineer Anything: analyse shipped software you cannot rea
 license: MIT
 compatibility: Any agent with a terminal/shell tool and file read/write. Needs an operator-supplied analysis environment with no network and no credentials (a disposable VM for live work), the open-source tools in references/toolchain.md installed there, a working directory outside synced folders, and an approver independent of the requester.
 metadata:
-  version: 1.5.0
+  version: 1.6.0
   author: Speedrun AI Labs
   tags: reverse-engineering, binary-analysis, security-research, interoperability
 ---
@@ -79,14 +79,17 @@ runs no live step, its output is untrusted, and only the lead appends to the led
 ### Order of operations
 
 1. The intake above.
-2. Check the working directory's location (the last two preflight items), then
-   create the layout and write `env.sh` and `run.sh` (section 1).
+2. Create the empty `$W` and run the two location checks (the last two preflight
+   items) on it. Then create the layout, write `env.sh` and `run.sh`, and lock
+   them (section 1).
 3. Run the rest of the preflight (section 1). Stop if it fails.
 4. Copy and hash the original (section 1).
 5. Ledger entry 1 (section 7). Then continue at section 2.
 
-A stop at steps 2 to 4 happens before the ledger exists: write it as the first
-entry after the intake, then end.
+A stop at steps 2 to 4 happens before the ledger exists. If the location checks
+passed, write the stop as ledger entry 1; if they failed, write nothing in `$W`
+and report the stop in the conversation only. Either way, tell the operator why
+and wait for their answer (section 6A).
 
 ---
 
@@ -101,8 +104,10 @@ version-controlled folders.
 
 ```
 $W/original/sample.<ext>   read-only copy; the real file name is recorded as data
+                           (a directory target: $W/original/target/)
 $W/extracted/<name>/       one extraction root per unpack
-                           (for a comparison: $W/<version>/extracted/<name>/)
+                           (a comparison: $W/<version>/ holds that version's
+                           original/, extracted/ and out/; see the evidence guide)
 $W/out/                    tool output (a subagent: $W/out/<name>/)
 $W/scripts/                env.sh, run.sh and any helper (each hashed in the ledger)
 $W/scratch/<task>/         a fresh empty directory to run each tool from
@@ -111,8 +116,10 @@ $W/ledger.md  $W/commands.log  $W/report.md (only if the result will be filed)
 ```
 
 An **extraction root** is any `extracted/<name>/` directory, per-version ones
-included; every rule below about `extracted/` applies to each root. Pass files to
-tools by absolute path; never run a tool from inside an extraction root.
+included; every rule below about `extracted/` applies to each root. In commands,
+`$ROOT` is the root being handled; set it in each call
+(`ROOT="$W/extracted/<name>"`), because shells start fresh. Pass files to tools by
+absolute path; never run a tool from inside an extraction root.
 
 ### env.sh and run.sh
 
@@ -128,6 +135,7 @@ export HOME="$W/home" TMPDIR="$W/home/tmp"
 export XDG_CONFIG_HOME="$W/home/.config" XDG_CACHE_HOME="$W/home/.cache" XDG_DATA_HOME="$W/home/.local/share"
 export JAVA_TOOL_OPTIONS="-Duser.home=$W/home -Djava.io.tmpdir=$W/home/tmp"   # JVM tools ignore $HOME and TMPDIR
 export SYFT_CHECK_FOR_APP_UPDATE=false
+umask 077   # every file written is owner-only
 ```
 
 ```sh
@@ -141,8 +149,18 @@ printf '[exit %d]\n' "$r" >>"$log"
 exit "$r"
 ```
 
-Create the tree with `mkdir -p "$W"/{original,extracted,out,scripts,scratch,home/tmp}`
-and `chmod +x "$W/scripts/run.sh"`. Begin every shell call with
+Create the tree with `mkdir -p "$W"/{original,extracted,out,scripts,scratch,home/tmp,home/.config}`.
+Then **lock the scripts**, so nothing an extractor writes can change them:
+
+```sh
+chmod +x "$W/scripts"/*.sh && shasum -a 256 "$W/scripts"/*.sh > "$W/scripts/SHA256SUMS" \
+  && chmod a-w "$W/scripts"/* "$W/scripts"
+```
+
+To add a helper later, `chmod u+w "$W/scripts" "$W/scripts/SHA256SUMS"`, write it,
+run the lock line again and record the new hash in the ledger. A recipe a guide
+shows as a script file (for example `hosts.sh`) is saved this way and run through
+`run.sh`. Begin every shell call with
 `. /absolute/work/dir/scripts/env.sh &&` and run tools as
 `"$W/scripts/run.sh" <tool> ...`. Tool output goes only where you redirect it,
 never into the log, so a sample's text cannot forge log lines and secrets never
@@ -150,6 +168,8 @@ reach the exported log. A subagent sets `RUN_LOG=$W/out/<name>/commands.log`.
 `run.sh` logs one command, so wrap a pipeline whole, keeping every stage on record:
 `"$W/scripts/run.sh" bash -c 'strings -a -n 6 -- "$1" | grep -Eci openssl' _ "$W/original/sample.so"`
 (the sample path is passed as an argument, never pasted into the script text).
+A guide command shown without the wrapper is still run through `run.sh`; a
+pipeline whose patterns contain quotes is saved as a helper script instead.
 
 ### Preflight
 
@@ -182,7 +202,17 @@ never improvise one on the host.
 Copy the original to `original/sample.<ext>`, make it read-only (`chmod a-w`), take
 the size (`stat`) and SHA-256 (`shasum -a 256`, or `sha256sum`) of both the
 original and the copy, confirm they match, and record both. Every later finding
-cites this digest.
+cites this digest. Then `chmod a-w "$W/original"`, so the directory cannot gain or
+lose files either.
+
+A **directory target** (an installed `.app`, an unpacked install tree): copy it with
+`cp -a` to `original/target/` (links stay links), `chmod -R a-w` the copy, and
+write a manifest of each side,
+`find <dir> -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 > "$W/out/manifest-<source|copy>.txt"`.
+They match when the digest columns (`cut -c1-64`) are identical and the file and
+link counts (`find <dir> -type f | wc -l`, `-type l`) agree. The SHA-256 of the
+copy's manifest is the target's identity; a finding about one file (the
+`app.asar`) also cites that file's own digest.
 
 ### Handling rules
 
@@ -208,6 +238,14 @@ cites this digest.
   regular file or directory that resolves outside its root is a stop. Symlinks
   pointing out of the root are expected in filesystem images: they are recorded
   and neutralised by the next rule, not a stop.
+- **Check that nothing escaped.** An extractor can be tricked into writing outside
+  its root (binwalk 2.3.3 and earlier did, CVE-2022-4510: use 2.3.4 or v3). Before
+  each extraction `: > "$W/scratch/<task>.start"`; after it, both must hold or it
+  is a stop:
+  `shasum -a 256 -c "$W/scripts/SHA256SUMS"` reports every script `OK`, and
+  `{ find "$W/scripts" "$W/original" "$W/home/.config" -cnewer "$W/scratch/<task>.start" -type f; find "$W/home" -maxdepth 1 -cnewer "$W/scratch/<task>.start" -type f; }`
+  prints nothing. It tests change time (`-cnewer`) because an archive can backdate
+  a file's modification time; it skips `home/tmp` and tools' data caches.
 - **Neutralise links before any recursive read.** Filesystem images legitimately
   contain symlinks, hard links and device nodes. Before `grep -r`, `diff -r`, a
   tree-wide `shasum`, `syft` or any batch read of a root:
@@ -226,9 +264,11 @@ cites this digest.
        done' sh {} +
      ```
 
-     A link whose target is absolute or climbs out is removed and replaced by an
-     empty regular file (`: >` runs only after `rm`, so it never writes through a
-     link); a link that stays inside the root is kept.
+     A link whose target is absolute or uses `..` anywhere is removed and replaced
+     by an empty regular file (`: >` runs only after `rm`, so it never writes
+     through a link), even when it would resolve inside the root; only a relative
+     link with no `..` is kept. The record keeps every link and its target, so an
+     inventory can still use them.
   2. Skip device nodes. Never use `grep -R`, `find -L`, `cp -L`, or `diff` without
      `--no-dereference`.
   Before reading any single file, confirm its `realpath` is inside the root.
@@ -252,7 +292,9 @@ cites this digest.
   pipelines (`grep -c`, `grep -l`), or send masked matches straight to a mode-0600
   file in `out/`, never to the screen. Record a secret's type, length and location;
   hash only a high-entropy value (a hash of a short or low-entropy secret is
-  reversible). Delete such files at close. Count personal data; never quote it.
+  reversible). Name every secret-bearing file in `out/` (raw `strings` output,
+  endpoint lists, decompiled config) in the ledger; those files are never exported
+  and are deleted at close. Count personal data; never quote it.
 
 ---
 
@@ -277,7 +319,11 @@ the answer is.
 ## 3. ROUTE BY TARGET TYPE
 
 Pick the **most specific** row that matches: Electron, Go, Rust, .NET and
-WebAssembly outrank the generic native row, which is the fallback. Each row names
+WebAssembly outrank the generic native row, which is the fallback. When the target
+is a container (firmware, an installer, an archive, a bundle) and the question is
+about what is inside it (an SBOM, the hosts an app can contact), take the
+container's row first to unpack it (section 5), then the row for the question on
+the extraction root. Each row names
 the open-source tools and the reference guide to read before going deep. Read the
 guide for each layer you reach; the evidence guide (section 7) is always read.
 
@@ -324,8 +370,8 @@ Depth costs time and tokens; spend it only where the question needs it.
 4. **Batch around a hypothesis.** Group related lookups to test one idea, then
    expand only where the result leaves a concrete gap.
 5. **Parallelise independent questions.** When several questions do not depend
-   on one another and workers are available, give each a distinct scope, the
-   section 0 entry and a pointer to the shared evidence, and have each return
+   on one another and workers are available, give each a distinct scope, ledger
+   entry 1 and a pointer to the shared evidence, and have each return
    sources, conclusions and gaps.
 6. **When a tool is missing or fails.** Missing: report it, name the install step
    (`references/toolchain.md`), use one documented fallback if there is one, and
@@ -351,6 +397,11 @@ Installers, firmware and packed executables carry the real target inside.
   carve them into a **new** extraction root `$W/extracted/<name>/`, never an existing
   one and never anywhere else.
 - Re-identify every carved payload (section 2) and route each (section 3).
+- A payload carved or unpacked from the approved artifact (the `app.asar` in a
+  bundle, the rootfs in a firmware image, a jar inside a jar) is part of that
+  artifact: it needs no new approval for the approved question, only its own
+  route. A new ledger entry and approval are needed only when the question turns
+  to a component itself (section 0).
 - Record what each layer was and where it came from in the image, so the chain
   from the original bytes to the analysed payload is auditable.
 - A carve that would execute anything (an auto-run unpacker, a self-extracting
@@ -396,7 +447,8 @@ Live analysis is off by default. Before any live work:
   it is untrusted like any other sample-derived data.
 - **Teardown.** When the session ends, stop everything it started; append the
   teardown entry to the ledger; then hash and export `ledger.md`, `commands.log`,
-  `report.md` and `out/` over the operator's channel and post the digests in the
+  `report.md` and `out/` (less the secret-bearing files the ledger names, which
+  are deleted) over the operator's channel and post the digests in the
   conversation, all **before** you roll the VM back (the rollback erases them
   otherwise).
 
@@ -492,7 +544,8 @@ version-diffing, corroboration and verification workflows.
   that work. A reimplementation is informed by the analysis, not a copy of
   protected expression.
 - **Deliverables.** Name and hash every file you hand over (report, ledger,
-  `out/` artifacts such as an SBOM), so the operator can file them.
+  `out/` artifacts such as an SBOM), so the operator can file them. A
+  secret-bearing file the ledger names is never a deliverable.
 - **Retention and cleanup.** Hand the original, its digests, the ledger and the
   report to the operator's evidence store. Delete working extractions on
   completion or abort, only by paths whose `realpath` is inside the working

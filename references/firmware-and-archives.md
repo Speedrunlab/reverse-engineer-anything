@@ -14,7 +14,9 @@ then route each payload.
   systems, compressed blobs, certificates, bootloaders) and where. Read the map
   before extracting.
 - **Check the binwalk version first** (`binwalk --help`): v3 takes the output
-  directory as `-d`, v2 as `-C` (in v2, `-d` means depth).
+  directory as `-d`, v2 as `-C` (in v2, `-d` means depth). Never use v2 at 2.3.3
+  or earlier (CVE-2022-4510: a crafted image writes outside the output directory).
+  Run the SKILL.md section 1 escape check after every carve.
 - **Carve** with `binwalk -e -d <outdir> <image>` (v3) or `binwalk -e -C <outdir> <image>` (v2) or, for broader format coverage
   and recursive extraction, **unblob** (`unblob -e <outdir> <image>`). Both write into a
   directory you choose: point it at a new extraction root `$W/extracted/<name>/`.
@@ -109,9 +111,13 @@ Every tool below gets an explicit output directory under `$W/extracted/<name>/`
 ## Component inventory (SBOM)
 
 "Which open-source components and versions are inside this image?" for a bill of
-materials. Work from strongest evidence to weakest, one ledger entry per method:
+materials. Carve the image first (the firmware section above, SKILL.md section 5)
+and run every step on its extraction root, `$ROOT`, after the section 1 link
+step: the paths below are inside that root, so `/var/lib/dpkg/status` means
+`"$ROOT/var/lib/dpkg/status"`, never the host's own file. Work from strongest
+evidence to weakest, one ledger entry per method:
 
-1. **Package databases** (highest confidence): `/var/lib/dpkg/status`,
+1. **Package databases** (the strongest single signal): `/var/lib/dpkg/status`,
    `/var/lib/opkg/status`, `/var/lib/pacman/local/`, an RPM database, and
    `/etc/os-release`. These give name and version directly.
 2. **Shared libraries:** the `*.so*` file names and `readelf -d <lib> | grep SONAME`.
@@ -128,10 +134,11 @@ cross-checks the manual pass, after the section 1 link step on that root (syft h
 no vulnerability DB; `SYFT_CHECK_FOR_APP_UPDATE=false`, set in `env.sh`, stops its
 only network call, and `TMPDIR` in `env.sh` keeps its temporary unpacking inside
 `$W`). Vulnerability matching, if asked, is a
-separate tool (grype/osv-scanner) with its DB staged and updates disabled. Confidence is high when a package
-DB or a SONAME plus a banner agree; medium for a single banner; low for a path or
-filename. State coverage: a clean extraction inventoried, or carving that may have
-missed regions.
+separate tool (grype/osv-scanner) with its DB staged and updates disabled. Grade
+confidence on the one scale in SKILL.md section 7: a package DB entry or a banner
+alone is one signal (medium); two that agree, such as a package DB and a banner,
+or a SONAME and a banner, are high; a path or filename alone is low. State
+coverage: a clean extraction inventoried, or carving that may have missed regions.
 
 ## Pitfalls
 

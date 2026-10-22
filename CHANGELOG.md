@@ -2,6 +2,37 @@
 
 Reverse Engineer Anything. Newest first.
 
+## v1.6.0 (23 Oct 2026)
+
+Hardening round 6 (adversarial, fresh-reader), scope frozen. New commands were run
+against a test tree before shipping (the GNU sed path of `endpoints.sh` was
+checked by its guard only, as the build host has BSD sed).
+
+- The scripts are locked (read-only, with `SHA256SUMS`) and `original/` is
+  read-only. After every extraction the sums are rechecked and a change-time
+  (`-cnewer`) scan of `scripts/`, `original/` and the sandboxed HOME's config must
+  come back empty, so an extractor that writes outside its root is caught even
+  when it backdates the file. binwalk 2.3.3 and earlier are refused
+  (CVE-2022-4510).
+- A directory target (an installed `.app`) has a defined identity: a `cp -a`
+  copy and a sorted per-file SHA-256 manifest.
+- Payloads carved from the approved artifact (an `app.asar`, a rootfs, a nested
+  jar) need no new approval; the routing rule says container first, then the
+  question's row on the extraction root; the SBOM guide runs inside `$ROOT`;
+  `$ROOT` is defined.
+- The host and endpoint pipelines are locked helper scripts run through
+  `run.sh`, with `pipefail` and meaningful exit codes; `endpoints.sh` refuses to
+  run without GNU sed rather than returning an empty file.
+- Secret exposure closed: gdb backtraces use `set print frame-arguments none` and
+  go to a file; library-version, DNS, SNI, manifest and plist reads go to files or
+  print only the match; HAR masking drops a query or fragment with no path;
+  `umask 077` in `env.sh`; secret-bearing `out/` files are named in the ledger and
+  never exported.
+- Consistency: one confidence scale (the SBOM guide no longer has its own),
+  comparison layout matches the evidence guide, the setup order creates `$W`
+  before checking it, a pre-ledger stop writes nothing in a failed location, the
+  link rule's prose matches its command, README wording matches the body.
+
 ## v1.5.0 (23 Oct 2026)
 
 Hardening round 5 (adversarial, fresh-reader), scope frozen. Every changed

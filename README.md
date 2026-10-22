@@ -8,7 +8,7 @@ Free and open source · MIT Licence · Built by [Speedrun AI Labs](https://www.s
 
 ## The idea
 
-When a question depends on a shipped artifact you can't read the source of, which library a binary bundles, what an Electron app sends home, how a firmware image is laid out, what changed between two releases, you reach for reverse-engineering tools. This skill gives an AI agent a disciplined way to do that: route each target to the right tool, stay static and read-only by default, and tie every conclusion to evidence.
+When a question depends on a shipped artifact you can't read the source of, which library a binary bundles, which hosts an Electron app can contact, how a firmware image is laid out, what changed between two releases, you reach for reverse-engineering tools. This skill gives an AI agent a disciplined way to do that: route each target to the right tool, stay static and read-only by default, and tie every conclusion to evidence.
 
 It is **self-contained and agent-agnostic**. It drives standard open-source tools (Ghidra, radare2, binwalk, JADX, apktool, WABT, tshark, and friends) through the agent's own terminal and file tools. There is **no bundled server to install, no `npx …@latest`, no `curl | bash`, and no edits to any agent's global config**, the whole point. It still runs in the clean, network-less environment described in the skill (section 1), not directly on a machine holding business credentials.
 
@@ -37,7 +37,7 @@ It is **self-contained and agent-agnostic**. It drives standard open-source tool
 
 ## Changelog
 
-See [CHANGELOG.md](CHANGELOG.md). Current version: 1.5.0.
+See [CHANGELOG.md](CHANGELOG.md). Current version: 1.6.0.
 
 ---
 

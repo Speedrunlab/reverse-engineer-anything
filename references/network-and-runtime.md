@@ -17,8 +17,10 @@ A saved capture is just a file. Read it; do not replay or fetch from it.
   payloads:
   - **Hosts and protocols:** `-q -z conv,ip -z conv,ipv6` and `-q -z conv,tcp -z conv,udp`
     (`conv,ip` alone misses IPv6 and would make a "no external host" claim wrong).
-  - **DNS names queried:** `-nr <file> -Y 'dns.flags.response==0' -T fields -e dns.qry.name | sort -u`.
-  - **TLS SNI (where it connects even when encrypted):** `-Y 'tls.handshake.type==1' -T fields -e ip.dst -e ipv6.dst -e tls.handshake.extensions_server_name | sort -u`.
+  - **DNS names queried:** `-nr <file> -Y 'dns.flags.response==0' -T fields -e dns.qry.name | sort -u > "$W/out/dns.txt"`.
+  - **TLS SNI (where it connects even when encrypted):** `-Y 'tls.handshake.type==1' -T fields -e ip.dst -e ipv6.dst -e tls.handshake.extensions_server_name | sort -u > "$W/out/sni.txt"`.
+  - Both go to files because a name label can carry encoded data; read them with
+    `wc -l` and `cut -c1-120 <file> | cat -v`.
   - **External** = any address outside RFC1918, loopback, link-local and multicast.
   - **Cleartext:** which hosts and ports carried application data in the clear,
     with the default output (which prints payload summaries) suppressed:
@@ -38,8 +40,9 @@ A saved capture is just a file. Read it; do not replay or fetch from it.
   network completeness, and a capture is one session, not the app's whole behaviour.
 - **HAR** (browser export), JSON of requests/responses. Project only non-secret
   fields rather than reading raw headers into context:
-  `jq -r '.log.entries[] | (.request.method+" "+(.request.url|sub("^[a-z]+://([^/@]*@)?";"")|split("/")[0]))' <file> | sort -u`
-  (method and host only: user-info, path and query, where tokens sit, are dropped)
+  `jq -r '.log.entries[] | (.request.method+" "+(.request.url|sub("^[a-z]+://([^/?#]*@)?";"")|split("/")[0]|split("?")[0]|split("#")[0]))' <file> | sort -u`
+  (method and host only: user-info, path, query and fragment, where tokens sit,
+  are dropped, including a query with no path before it)
   for the endpoints; count auth headers rather than printing them. Do not fetch
   the recorded URLs.
 - **Saved mitmproxy flows / SAZ**: read with the matching reader

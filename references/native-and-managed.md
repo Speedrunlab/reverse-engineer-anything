@@ -12,7 +12,8 @@ decompile anything:
 - `file <bin>`: format, architecture, stripped or not, static or dynamic.
 - `strings -a -n 6 -- <bin> > "$W/out/strings.txt"`: embedded text (URLs, paths,
   format strings, version stamps, error messages, bundled library names) goes to a
-  file, never the screen, because it can hold keys. Query it with `grep -c` and
+  file, never the screen, because it can hold keys; name it in the ledger as
+  secret-bearing (SKILL.md section 1). Query it with `grep -c` and
   targeted `grep -o ... | cut -c1-120 | sort -u` (SKILL.md section 4). Bound your
   conclusions to what you searched.
 - Imports / exports, what it calls out to, and what it offers:
@@ -38,8 +39,8 @@ On macOS, `readelf` and `nm -D` are not installed by default: use `llvm-readelf`
     `readelf -V` shows the symbol versions it requires (for example
     `OPENSSL_3.0.0`), which bounds it.
   - Bundled (statically linked): look for the library's version string in the
-    file itself, e.g. `strings -a -n 6 <bin> | grep -Ei
-    'openssl [0-9]|libressl|boringssl|mbed ?tls|wolfssl|gnutls|libgcrypt|libsodium'`.
+    file itself, printing only the name and version, never the whole line:
+    `"$W/scripts/run.sh" bash -c 'strings -a -n 6 -- "$1" | grep -Eio "(openssl|libressl|boringssl|mbed ?tls|wolfssl|gnutls|libgcrypt|libsodium)[ /_-]?v?[0-9][0-9a-z.]*" | sort -u | cat -v' _ <bin>`.
   - Confidence: a version string inside the file plus calls into its routines is
     high; a string alone is medium (it may be vendored but unused, or stale).
 - **What does it export or import?** The symbol and import tables above; record
@@ -145,19 +146,28 @@ a sample.
   it separately from the implementation (log4j2, logback). Take the version from
   the nested jar's `MANIFEST.MF` `Implementation-Version` or its `pom.properties`,
   not the filename alone.
-- **Hard-coded endpoints and credentials:** one pipeline, straight to a mode-0600
-  file, so no raw value reaches the screen (`$ROOT` is the decompiled tree):
+- **Hard-coded endpoints and credentials:** one helper, saved and locked as
+  `$W/scripts/endpoints.sh` (SKILL.md section 1), writing straight to a mode-0600
+  file so no raw value reaches the screen:
 
   ```sh
+  #!/usr/bin/env bash
+  # endpoints.sh <tree> <out-file>: endpoint URLs with credentials masked.
+  # Needs GNU sed for the I flag: the Linux VM's sed, or SED=gsed on macOS.
   set -o pipefail; umask 077
-  grep -rEoh -- "((https?|wss?|amqps?|rediss?|ldaps?|mongodb(\+srv)?|jdbc:[a-z0-9:]+)://[^ \"'<>]+|jdbc:oracle:thin:[^ \"'<>]+)" "$ROOT" \
-  | sed -E "s#//[^/ \"']*@#//<cred>@#g; s#(thin:)[^@ \"']*@#\1<cred>@#g; s/((pass(word|wd)?|pwd|secret|token|api_?key|access_?key|access_token|client_secret|key|sig(nature)?|auth)=)[^&; \"']*/\1<redacted>/Ig" \
-  | sort -u > "$W/out/endpoints.txt"
+  SED="${SED:-sed}"
+  "$SED" --version >/dev/null 2>&1 || { echo "endpoints.sh: needs GNU sed" >&2; exit 2; }
+  grep -rEoh -- "((https?|wss?|amqps?|rediss?|ldaps?|mongodb(\+srv)?|jdbc:[a-z0-9:]+)://[^ \"'<>]+|jdbc:oracle:thin:[^ \"'<>]+)" "$1" \
+  | "$SED" -E "s#//[^/?# \"']*@#//<cred>@#g; s#(thin:)[^@ \"']*@#\1<cred>@#g; s/((pass(word|wd)?|pwd|secret|token|api_?key|access_?key|access_token|client_secret|key|sig(nature)?|auth)=)[^&; \"']*/\1<redacted>/Ig" \
+  | sort -u > "$2"
   ```
 
-  It masks URL user-info (including a password containing `@`), the Oracle
-  `user/pass@` form and common secret query parameters; `pipefail` makes a failed
-  stage an error rather than an empty "no endpoints" file. A token embedded in a
+  Run it as `"$W/scripts/run.sh" "$W/scripts/endpoints.sh" "$ROOT" "$W/out/endpoints.txt"`,
+  with `$ROOT` the decompiled tree. It masks URL user-info (including a password
+  containing `@`), the Oracle `user/pass@` form and common secret query parameters.
+  Exit 1 with an empty file means nothing matched; exit 2 is an error (a missing
+  tree, or no GNU sed), never "no endpoints". For a credential's location, list
+  the files with `grep -rEl` and the same pattern. A token embedded in a
   URL path (a webhook) cannot be detected generically, so treat `endpoints.txt` as
   secret-bearing: keep it at mode 0600, report hosts
   (`cut -d/ -f3 "$W/out/endpoints.txt" | sort -u`) rather than full URLs, and report
@@ -169,8 +179,10 @@ a sample.
 
 A `.app` is a directory; a `.pkg`/`.dmg` wraps one. Read, never launch.
 
-- `plutil -p <App>.app/Contents/Info.plist` for identifiers, versions and the
-  executable name; the Mach-O is at `Contents/MacOS/<name>` (route it above).
+- `plutil -p <App>.app/Contents/Info.plist > "$W/out/info-plist.txt"`, then grep
+  it for identifiers, versions and the executable name (`CFBundle`) rather than
+  reading it whole, since custom keys can hold API keys; the Mach-O is at
+  `Contents/MacOS/<name>` (route it above).
 - `codesign -dvvv --entitlements :- <App>.app` for the signing identity and the
   entitlements (pipe to `plutil -p -` to read them); `lipo -info <binary>` and
   `lipo -thin` to pick an architecture.
@@ -186,8 +198,8 @@ A `.app` is a directory; a `.pkg`/`.dmg` wraps one. Read, never launch.
 - `.pkg`: `pkgutil --check-signature` and `pkgutil --expand-full` (or `xar -xf`).
   `.dmg`: unpack with `7zz x` into `$W/extracted/`, do not `hdiutil attach`
   (that mounts it).
-- ASAR, embedded frameworks and XPC services under `Contents/` are each their own
-  target.
+- ASAR, embedded frameworks and XPC services under `Contents/` are payloads of the
+  same app (no new approval, SKILL.md section 5): route each separately.
 
 ## Crash and core dumps
 
@@ -197,8 +209,10 @@ section 1) apply in full.
 - ELF core: `readelf -n core` lists the core notes (signal in `NT_PRSTATUS`,
   mapped files in `NT_FILE`); `eu-unstrip -n --core core` pairs each mapping with
   its build-id; `eu-stack --core core -e <bin>` gives a backtrace;
-  `gdb -nx -iex "set auto-load off" --batch -ex bt -c core <bin>` (both `-nx` and
-  `auto-load off`, and never `run`/`start`/`call`). Match the build-id to symbols
+  `gdb -nx -iex "set auto-load off" -iex "set print frame-arguments none" --batch -ex bt -c core <bin> > "$W/out/bt.txt"`
+  (both `-nx` and `auto-load off`, never `run`/`start`/`call`, and never `bt full`:
+  frame arguments and locals can hold passwords). Read `bt.txt` with
+  `cut -c1-200 "$W/out/bt.txt" | cat -v`. Match the build-id to symbols
   before trusting frame names. `eu-*` are elfutils (Linux); run them in the Linux
   analysis VM.
 - Windows minidump: Breakpad `minidump_stackwalk <dmp> <symbols>`, or the Python

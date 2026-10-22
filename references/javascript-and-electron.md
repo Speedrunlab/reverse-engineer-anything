@@ -10,7 +10,9 @@ An Electron app is a Chromium + Node shell wrapping your real target: the app's
 JavaScript, in `resources/app.asar` (Windows/Linux) or
 `<App>.app/Contents/Resources/app.asar` (macOS), or an unpacked `resources/app/`.
 
-- Locate `app.asar` inside the installed app or the package you extracted. From
+- Locate `app.asar` inside the installed app or the package you extracted (an
+  installed `.app` is a directory target: SKILL.md section 1, Identity). It is a
+  payload of the approved app, so it needs no new approval (SKILL.md section 5). From
   an installer, unpack without running it: a DMG or NSIS `.exe` with `7zz x`, an
   AppImage with `unsquashfs` or `7zz` (see the firmware and archives guide).
 - Extract it into `$W/extracted/`: `asar extract app.asar <outdir>` (from
@@ -46,10 +48,20 @@ read only what the question needs.
 
 ## What to read for common questions
 
-- **"What does it call home to"**: collect candidate hosts with
-  `grep -rEoh -- "(wss?|https?)://[^/ \"'<>?#]+" <tree> | sed -E 's#//[^/]*@#//<cred>@#' | sort -u >
-  $W/out/hosts.txt` (the user-info part, where keys such as a Sentry DSN key sit, is
-  masked rather than mistaken for a host), then find the call sites: `fetch(`, `XMLHttpRequest`,
+- **"What does it call home to"**: collect candidate hosts with this helper,
+  saved and locked as `$W/scripts/hosts.sh` (SKILL.md section 1):
+
+  ```sh
+  #!/usr/bin/env bash
+  # hosts.sh <tree> <out-file>: candidate hosts, user-info masked
+  set -o pipefail; umask 077
+  grep -rEoh -- "(wss?|https?)://[^/ \"'<>?#]+" "$1" | sed -E 's#//[^/]*@#//<cred>@#' | sort -u > "$2"
+  ```
+
+  Run it as `"$W/scripts/run.sh" "$W/scripts/hosts.sh" "$ROOT" "$W/out/hosts.txt"`.
+  Exit 0 is a result; exit 1 with an empty file means no URL matched; exit 2 is an
+  error, never "no hosts". The user-info part, where keys such as a Sentry DSN key
+  sit, is masked rather than mistaken for a host. Then find the call sites: `fetch(`, `XMLHttpRequest`,
   `WebSocket`, `net.request`, `https.request`, axios/got, the auto-updater feed
   (`autoUpdater.setFeedURL`, `resources/app-update.yml`, `build.publish` in
   `package.json`), crash reporting and analytics settings, and any
