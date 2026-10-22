@@ -11,8 +11,8 @@ JavaScript, in `resources/app.asar` (Windows/Linux) or
 `<App>.app/Contents/Resources/app.asar` (macOS), or an unpacked `resources/app/`.
 
 - Locate `app.asar` inside the installed app or the package you extracted. From
-  an installer, unpack without running it: a DMG or NSIS `.exe` with `7z x`, an
-  AppImage with `unsquashfs` or `7z` (see the firmware and archives guide).
+  an installer, unpack without running it: a DMG or NSIS `.exe` with `7zz x`, an
+  AppImage with `unsquashfs` or `7zz` (see the firmware and archives guide).
 - Extract it into `work/extracted/`: `asar extract app.asar <outdir>` (from
   the pinned `@electron/asar`). `asar list app.asar` first to see the tree
   cheaply.
@@ -30,7 +30,13 @@ read only what the question needs.
   `//# sourceMappingURL=` data URI) shipped, use it to map the bundle back to
   original file/line with a source-map consumer. A map that references original
   source paths tells you the project structure directly.
-- **No map:** beautify/format the bundle to restore structure, then read it.
+- **No map:** format the bundle to restore structure, then read it. Run the
+  formatter with config and plugins off and on a copy in `work/scratch/`, because
+  a formatter searches upward for `.prettierrc.js`/`prettier.config.js` and a
+  `package.json` `"prettier"` key and will load a plugin a hostile bundle planted:
+  `prettier --no-config --no-editorconfig` run from the empty `work/scratch/`
+  (Prettier 3 loads a plugin only when config names one, which `--no-config`
+  blocks), or js-beautify, which does no config lookup.
   Bundlers leave module boundaries (webpack chunk ids, module wrappers) you can
   navigate.
 - Search before you read whole files: grep the beautified tree for the API, the

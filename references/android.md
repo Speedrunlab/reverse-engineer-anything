@@ -57,7 +57,7 @@ The manifest answers a lot before any code:
 - An AAB (`.aab`) is a publishing format, not an installable APK. apktool and
   `aapt2` take APKs: convert first with
   `bundletool build-apks --bundle=<app>.aab --output=<work/out/app>.apks --mode=universal`,
-  then `7z x <app>.apks -o<work/extracted/apks>` to get `universal.apk` (or read
+  then `7zz x <app>.apks -o<work/extracted/apks>` to get `universal.apk` (or read
   the manifest with `bundletool dump manifest --bundle=<app>.aab`). JADX opens an
   `.aab` directly. The converted APK is signed with a debug key, so its signature
   says nothing about who published the app; read signing from the original.

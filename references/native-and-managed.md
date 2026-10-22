@@ -71,10 +71,12 @@ On macOS, `readelf` and `nm -D` are not installed by default: use `llvm-readelf`
   note obfuscation as an observation and keep conclusions bounded.
 - **What config does it read, and what does it do with the values?** Grep the
   decompiled tree for `ConfigurationManager`, `AppSettings`, `GetSection`,
-  `GetConnectionString`, `IConfiguration`, `GetValue`, `Bind<`, `IOptions<`,
-  `Environment.GetEnvironmentVariable`, and file reads (`File.ReadAllText`,
-  `XmlDocument.Load`, `JsonSerializer`). Keys bound through an options class are
-  the class's property names, not string literals, so read the bound type. For
+  `GetConnectionString`, `ConnectionStrings`, `IConfiguration`, `GetValue<`,
+  `.Bind(`, `.Get<`, `services.Configure<`, `IOptions<`, `IOptionsSnapshot<`,
+  `IOptionsMonitor<`, `Environment.GetEnvironmentVariable`, and file reads
+  (`File.ReadAllText`, `XmlDocument.Load`, `JsonSerializer`). Keys bound through an
+  options class are the class's property names, not string literals, so read the
+  bound type. For
   each key, trace its default and where the value flows (a connection, a branch,
   a path). Check embedded resources and any shipped `*.config`/`appsettings*.json`.
 
@@ -91,9 +93,10 @@ On macOS, `readelf` and `nm -D` are not installed by default: use `llvm-readelf`
 ## Rust
 
 - If built with `cargo auditable`, the `.dep-v0` section lists the dependency
-  tree as zlib-compressed JSON: read it with `rust-audit-info <bin>` or
-  `rust-audit-info` only (it works offline; `cargo audit` fetches an advisory DB and is for vulnerabilities, not inventory). A
-  missing section is absence of that metadata, not proof of no dependencies.
+  tree as zlib-compressed JSON: read it with `rust-audit-info <bin>`, which works
+  offline. (`cargo audit` fetches an advisory DB over the network and reports
+  vulnerabilities, not an inventory, so it is not used here.) A missing section is
+  absence of that metadata, not proof of no dependencies.
 - Otherwise treat it as a native binary (Ghidra/rizin); Rust's monomorphised,
   inlined code is dense, so stay seed-driven.
 
@@ -125,12 +128,25 @@ a sample.
 - `unzip -l <jar>` to inventory; read `META-INF/MANIFEST.MF` (Main-Class,
   versions) and any `META-INF/maven/**/pom.properties` for component versions.
 - `javap -c -p -v <Class>` disassembles bytecode and shows the constant pool.
-  Decompile with **CFR** (`java -jar cfr.jar <jar>`) or **Vineflower**; JADX also
-  reads `.jar`. Treat decompiler output as a reconstruction.
+  Decompile with **CFR** (`java -jar cfr.jar --outputdir work/out/cfr <jar>`, which
+  writes files instead of flooding stdout) or **Vineflower**; JADX also reads
+  `.jar`. Treat decompiler output as a reconstruction.
+- A Spring Boot fat jar nests dependencies under `BOOT-INF/lib/*.jar`; those are
+  payloads of the same artifact (no new authority entry), unzipped and read in
+  place.
 - `jarsigner -verify -verbose -certs <jar>` reports signing; an unsigned or
   mismatched jar is a provenance finding.
+- **Logging framework and version:** list `BOOT-INF/lib/*` (or the flat jar's
+  entries) matching `log4j|logback|slf4j`; `slf4j` is only the facade, so report
+  it separately from the implementation (log4j2, logback). Take the version from
+  the nested jar's `MANIFEST.MF` `Implementation-Version` or its `pom.properties`,
+  not the filename alone.
+- **Hard-coded endpoints and credentials:** `strings`/grep the decompiled tree for
+  `grep -Eoh '(https?|jdbc:[a-z]+|amqp|redis|mongodb)://[^ "'"'"']+'`, then mask
+  before recording (`sed -E 's#//[^/@]*@#//<cred>@#; s/(password|pwd|secret|token|apikey|key)=[^&;]*/\1=<redacted>/Ig'`).
+  Report a credential as file, key, type and length only (SKILL.md section 1).
 - Dependencies for an SBOM: the `pom.properties` groupId/artifactId/version, or
-  hashes of bundled jars matched against a known set.
+  hashes of bundled jars matched against the operator's known-set.
 
 ## macOS bundles
 
@@ -138,22 +154,37 @@ A `.app` is a directory; a `.pkg`/`.dmg` wraps one. Read, never launch.
 
 - `plutil -p <App>.app/Contents/Info.plist` for identifiers, versions and the
   executable name; the Mach-O is at `Contents/MacOS/<name>` (route it above).
-- `codesign -dvvv --entitlements :- <App>.app` for the signing identity and
-  entitlements; `lipo -info <binary>` and `lipo -thin` to pick an architecture.
+- `codesign -dvvv --entitlements :- <App>.app` for the signing identity and the
+  entitlements (pipe to `plutil -p -` to read them); `lipo -info <binary>` and
+  `lipo -thin` to pick an architecture.
+- **Signed and notarised?** `codesign -dvvv <App>.app 2>&1 | grep -E
+  'Authority|TeamIdentifier|flags|Timestamp'` shows the Developer ID chain and the
+  hardened-runtime flag. Notarisation that has been stapled: `xcrun stapler
+  validate <App>.app`. `spctl -a -vv` needs Apple's online service, which the
+  section 1 environment denies, so report "notarisation not determinable offline
+  unless stapled". Also check the container's own signature: `codesign -dvvv
+  <f>.dmg`. Do not trust `codesign --verify` on a `7zz` extract (it loses symlinks
+  and xattrs); verify on the mounted-read original only if a macOS host is
+  available, else record the limit. A macOS host is needed for `codesign`/`spctl`;
+  on Linux use `rcodesign print-signature-info`.
 - `.pkg`: `pkgutil --check-signature` and `pkgutil --expand-full` (or `xar -xf`).
-  `.dmg`: unpack with `7zz x`, do not `hdiutil attach` (that mounts it).
+  `.dmg`: unpack with `7zz x` into `work/extracted/`, do not `hdiutil attach`
+  (that mounts it).
 - ASAR, embedded frameworks and XPC services under `Contents/` are each their own
   target.
 
 ## Crash and core dumps
 
-Read statically; a core holds process memory, so the secret rules (section 1)
-apply in full.
+Read statically; a core holds process memory, so the secret rules (SKILL.md
+section 1) apply in full.
 
-- ELF core: `readelf -n core` for notes (signal, build-ids, `NT_FILE` maps);
-  `eu-stack --core core -e <bin>` for a backtrace; `gdb -nx --batch -c core <bin>`
-  (`-nx` blocks auto-loaded scripts). Match the build-id to symbols before trusting
-  frame names.
+- ELF core: `readelf -n core` lists the core notes (signal in `NT_PRSTATUS`,
+  mapped files in `NT_FILE`); `eu-unstrip -n --core core` pairs each mapping with
+  its build-id; `eu-stack --core core -e <bin>` gives a backtrace;
+  `gdb -nx -iex "set auto-load off" --batch -ex bt -c core <bin>` (both `-nx` and
+  `auto-load off`, and never `run`/`start`/`call`). Match the build-id to symbols
+  before trusting frame names. `eu-*` are elfutils (Linux); run them in the Linux
+  analysis VM.
 - Windows minidump: Breakpad `minidump_stackwalk <dmp> <symbols>`, or the Python
   `minidump` library.
 - macOS `.ips`/`.crash` are text (JSON for `.ips`): read with `jq`/`cat`;

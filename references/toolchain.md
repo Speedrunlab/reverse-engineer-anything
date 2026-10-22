@@ -45,14 +45,15 @@ process that runs unreviewed code at install time.
 | Mach-O (macOS) | `otool`, `nm`; `codesign -d` | `otool`/`nm` from Xcode command-line tools; `codesign` is built into macOS | `codesign -dvvv` reads signing identity. |
 | .NET / managed | **ILSpy** / `ilspycmd` | github.com/icsharpcode/ILSpy | Decompiles CLI assemblies to C#. |
 | Go binaries | `go version -m <bin>` | go.dev | Reads module/build metadata straight from the binary. |
-| Rust (built with cargo-auditable) | `rust-audit-info` | github.com/rust-secure-code/rust-audit | List the `.dep-v0` dependency tree offline. |
+| Rust (built with cargo-auditable) | `rust-audit-info` | github.com/rust-secure-code/cargo-auditable (the `rust-audit-info` crate) | List the `.dep-v0` dependency tree offline. |
 | .NET IL dump | `monodis` | Mono | Dump IL and metadata without a GUI. |
-| ELF notes / cores (macOS host) | `llvm-readelf`, `eu-readelf`/`eu-stack` (elfutils) | LLVM, sourceware.org/elfutils | Apple `nm` can't read ELF; use these or `$(brew --prefix binutils)/bin/readelf`. |
-| Pickle inspection | `python3 -m pickletools` (stdlib) | Python | Disassemble a pickle without loading it. |
+| ELF notes / cores | `llvm-readelf`; `eu-readelf`/`eu-stack`/`eu-unstrip` (elfutils, Linux only) | LLVM; sourceware.org/elfutils | Apple `nm` can't read ELF. On macOS use `llvm-readelf` or `$(brew --prefix binutils)/bin/readelf`; run the `eu-*` tools in the Linux VM. |
+| Pickle inspection | `python3 -I -m pickletools` (stdlib) | Python | Disassemble a pickle without loading it. |
 | Java / JVM | `javap` (JDK), **CFR** or **Vineflower**, `jarsigner` | jdk; github.com/leibnitz27/cfr, github.com/Vineflower/vineflower | Disassemble and decompile `.class`/`.jar`. |
+| PyInstaller / pyc | `pyinstxtractor`, `pyi-archive_viewer` (PyInstaller), **pycdc**/`pycdas` | github.com/extremecoders-re/pyinstxtractor, github.com/zrax/pycdc | Unpack a PyInstaller exe and disassemble/decompile `.pyc`. |
 | macOS bundles / packages | `plutil`, `codesign`, `lipo`, `pkgutil` | built into macOS | Read Info.plist, entitlements, architectures, package signatures. |
 | Windows / Linux installers | `msitools` (`msiinfo`, `msiextract`), `innoextract`, `dpkg-deb`, `rpm2cpio`, `cabextract` | distro packages | Unpack installers and OS packages without running them. |
-| SBOM / component scan | **syft** (+ `grype` or `osv-scanner`, DB staged) | github.com/anchore/syft | Inventory components in a tree or image; disable DB auto-update. |
+| SBOM / component scan | **syft** (+ `grype` or `osv-scanner` for vulns, DB staged) | github.com/anchore/syft | Inventory components. syft has no DB; `SYFT_CHECK_FOR_APP_UPDATE=false` stops its only network call. |
 | Android | **apktool**, **JADX**, `aapt2` | github.com/iBotPeaches/Apktool, github.com/skylot/jadx | apktool for resources/manifest, JADX for Java/Kotlin. |
 | JavaScript / Electron | `@electron/asar`, `prettier` (formatting), the `source-map` package | npm (pinned, `--ignore-scripts`) | Extract ASAR, then format and map back. |
 | Android extras | `bundletool`, `apksigner` | github.com/google/bundletool; Android SDK build-tools | AAB to APK; signing certificates. |

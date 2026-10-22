@@ -1,7 +1,8 @@
 # Network captures and runtime observation
 
 Two kinds of work live here. **Reading a recorded capture** is static and needs
-no special approval. **Live observation**, running the target, attaching a
+no live-session envelope; the section 0 authorisation gate still applies (the
+capture is a sample). **Live observation**, running the target, attaching a
 debugger, driving a browser, or capturing fresh traffic, is gated (SKILL.md
 section 6): approved, owned, and isolated.
 
@@ -9,17 +10,33 @@ section 6): approved, owned, and isolated.
 
 A saved capture is just a file. Read it; do not replay or fetch from it.
 
-- **pcap / pcapng**: `tshark -r <file>` with a display filter for the protocol
-  or host in question; `tshark -r <file> -q -z conv,tcp` for a conversation
-  summary. Wireshark's GUI for exploration. Report the flows and fields you
-  observed; selecting a page of packets does not prove network completeness.
-- **HAR** (browser export), JSON of requests/responses. Read the entries for
-  hosts, methods, headers and timing. Do not fetch the recorded URLs.
+- **pcap / pcapng**: always pass `-n` (no name resolution, no lookups). Start with
+  `capinfos <file>` (span, snaplen, counts) and `tshark -nr <file> -q -z io,phs`
+  (the protocol hierarchy). Then answer the usual questions without printing
+  payloads:
+  - **Hosts and protocols:** `-q -z conv,ip` and `-q -z conv,udp`/`conv,tcp`.
+  - **DNS names queried:** `-nr <file> -Y 'dns.flags.response==0' -T fields -e dns.qry.name | sort -u`.
+  - **TLS SNI (where it connects even when encrypted):** `-Y 'tls.handshake.type==1' -T fields -e ip.dst -e tls.handshake.extensions_server_name | sort -u`.
+  - **External** = any address outside RFC1918, loopback, link-local and multicast.
+  - **Cleartext:** `-Y 'http.request||ftp||telnet||smtp||imap||pop||tftp||mqtt'`
+    for application data in the clear; list unencrypted DNS, NTP and mDNS
+    separately as metadata, not secrets.
+  - **Credentials in the clear:** count only (`-Y http.authorization | wc -l`);
+    never print the field. Report that N requests carried an auth header, with the
+    hosts, not the values.
+  Report the flows and fields you observed; a page of packets does not prove
+  network completeness, and a capture is one session, not the app's whole behaviour.
+- **HAR** (browser export), JSON of requests/responses. Project only non-secret
+  fields rather than reading raw headers into context:
+  `jq -r '.log.entries[] | (.request.method+" "+(.request.url|sub("\\?.*";"")))' <file> | sort -u`
+  for the endpoints; count auth headers rather than printing them. Do not fetch
+  the recorded URLs.
 - **Saved mitmproxy flows / SAZ**: read with the matching reader
   (`mitmdump -n -r <flows>`: `-n` starts no proxy listener; never use replay options; a SAZ reader for Fiddler). Treat bodies
   as recorded evidence, not live attribution.
-- **Redact.** Captures carry cookies, tokens and auth headers. Report the
-  endpoints and behaviour; redact the credentials.
+- **Never read a credential into context.** Captures carry cookies, tokens and
+  auth headers. Select non-sensitive fields only (the projections above); report
+  the endpoints and behaviour, and credentials as counts with their type and host.
 - Bound claims to the capture: "the recording shows requests to X", not "the
   app only talks to X", unless the capture is known-complete for that session.
 

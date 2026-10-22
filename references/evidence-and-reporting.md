@@ -45,10 +45,15 @@ A common and high-value task: what changed between two releases.
 - Normalise both sides the same way before diffing: extract/decompile/format
   each with the **same tool at the same version and settings**, or the diff is
   dominated by tooling noise.
-- **Summary first.** `diff -rq work/v1.2/extracted work/v1.3/extracted >
-  work/out/diff-files.txt` lists which files changed; then `diff -u` one file at a
-  time into `work/out/`, reading with `head`. Never pour a whole-tree diff into
-  your context.
+- **Neutralise links first** (SKILL.md section 1): GNU `diff` follows symlinks, so
+  a planted link would pull outside content in. Replace out-of-tree links with
+  empty files before diffing, and use `--no-dereference` where the local `diff`
+  supports it (GNU diffutils 3.3+; the macOS BSD `diff` may not, so run diffs in
+  the Linux VM).
+- **Summary first.** `diff -rq --no-dereference work/v1.2/extracted
+  work/v1.3/extracted > work/out/diff-files.txt` lists which files changed; then
+  `diff -u` one file at a time into `work/out/`, reading with `head`. Never pour a
+  whole-tree diff into your context.
 - **Obfuscated or minified builds** rename symbols between versions, so a code
   diff is mostly noise. Compare what survives renaming: manifests and permissions
   (`aapt2 dump badging` for each APK), component lists, native libraries and

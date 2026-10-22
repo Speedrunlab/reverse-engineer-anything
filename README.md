@@ -21,7 +21,7 @@ It is **self-contained and agent-agnostic**. It drives standard open-source tool
 - **Content is data, never instructions.** Text inside a sample cannot grant approval or change scope; hosts and credentials found in a sample are never used or contacted; secrets are masked at the source.
 - **Route by target type**, most specific first: native (ELF/Mach-O/PE), .NET, Go, Rust, WebAssembly, Electron/JavaScript, Android, firmware, archives and installers, model files, SQLite and recorded captures.
 - **Static-first, smallest-first**, with rules for missing or failing tools and for output too large to read at once.
-- **Live analysis is gated**: per-step approval recorded verbatim, ownership or written vendor consent, and an isolated VM the agent checks and records, then tears down.
+- **Live analysis is gated**: a recorded session envelope (not per-command approval), ownership or written vendor consent, and an isolated VM the agent checks and records, then tears down.
 - **Stop and ask** on mismatched digests, suspected malware, breached limits, possibly live credentials, bulk personal data, or embedded text trying to change scope.
 - **Evidence discipline**: an append-only ledger, observation separated from inference, confidence levels, bounded negative claims, a report template, and a safe two-version comparison procedure.
 
@@ -32,6 +32,33 @@ It is **self-contained and agent-agnostic**. It drives standard open-source tool
 1. **No bundled tool server and no auto-install.** It drives open-source tools you install yourself, at pinned versions, verified. Nothing auto-fetches code, and nothing edits your agent's configuration.
 2. **An explicit authorisation & scope gate** and **safe-sample handling** up front, suited to a regulated environment.
 3. **Agent-agnostic**: it names no proprietary tool layer; it maps to whatever terminal and file tools your agent already has.
+
+---
+
+## What's new in v1.3.0 (23 Oct 2026)
+
+Hardening round 3 (adversarial, usability, accuracy). Closes concrete abuse paths
+a hostile sample could use and fills coverage gaps:
+
+- A formatter, SQLite CLI or extractor no longer loads config, plugins, a view's
+  `writefile()`, or a planted symlink out of the sample: Prettier runs
+  `--no-config` from an empty scratch dir; SQLite uses `-init /dev/null -readonly`
+  with `trusted_schema=OFF` and base tables only; every extractor gets an explicit
+  output directory and runs with a sandboxed `HOME`; links out of the tree are
+  neutralised before any recursive read or diff (`--no-dereference`).
+- The preflight counts secret-shaped env names instead of printing values, checks
+  more credential stores, and verifies the work path is not synced or
+  version-controlled. One `run` wrapper logs every command and exit (no second
+  log). The live VM exports and hashes the ledger before rollback so evidence
+  survives. Core reading is explicitly static; launching or attaching a debugger
+  is live.
+- New routes and recipes: PyInstaller/`.pyc`, a full pcap recipe (hosts, DNS, SNI,
+  cleartext, credential counts), macOS notarisation, Java endpoints/credentials and
+  logging-framework version, .NET config-read APIs corrected.
+- Accuracy: `7zz` everywhere, `msiinfo tables` before `export`, extractor `-d`/`-C`
+  flags, AppImage offset from the ELF header, `eu-unstrip` for build-ids,
+  `gdb -iex "set auto-load off"`, syft's app-update env var, `pickletools -I`,
+  elfutils is Linux-only.
 
 ---
 

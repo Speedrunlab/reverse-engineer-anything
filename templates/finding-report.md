@@ -10,7 +10,7 @@
 - **Authority:** basis <owned / licensed / sanctioned>, approved by <name>, reference <ticket, contract or email>, date <date>, expiry <date or none>
 - **Question(s):** <what the analysis had to answer>
 - **Mode:** static | live
-- **Live steps (if any):** <each approval verbatim, approver, time, environment checks passed, teardown confirmed>
+- **Live steps (if any):** <session envelope verbatim, approver, time, environment checks passed, teardown and export confirmed>
 - **Analyst / host / skill version / date:** <who, where, version, when>
 - **Handling:** <how this report may be shared, e.g. internal only>
 
@@ -20,16 +20,17 @@
 
 ## Findings
 
-| # | Question | Observation (tool and version · command · location) | Inference | Evidence type | Confidence | Unknowns / boundary |
-|---|---|---|---|---|---|---|
-| 1 | | | | | | |
-| 2 | | | | | | |
+| # | Question | Observation (tool and version · command · location) | Inference | Evidence type | Confidence | Status | Unknowns / boundary |
+|---|---|---|---|---|---|---|---|
+| 1 | | | | | | | |
+| 2 | | | | | | | |
 
 > Observation = what the tool showed, reproducible from the digest + command.
 > Inference = what you conclude, marked as such. Keep them in separate columns.
 > Evidence type = static / live / metadata. Large per-item results (a permission
 > map, an SBOM) go in an appendix table, not this one.
 > Confidence: high = two independent signals, medium = one, low = a string or name alone.
+> Status = answered / partial / unresolved.
 
 ## Tools used
 
@@ -48,6 +49,10 @@
 ## Secrets and personal data
 
 <Counts only: what kinds were found and where, masked (prefix, length, hash). No raw values.>
+
+## Appendix tables
+
+<Large per-item results (permission-to-code map, SBOM, host list). One row per item.>
 
 ## Notes
 
