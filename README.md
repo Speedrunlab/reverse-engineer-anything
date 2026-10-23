@@ -96,6 +96,7 @@ MIT. Free to use, modify and distribute.
 ## Part of the Speedrun AI Labs Skill Library
 
 Other skills at [github.com/Speedrunlab](https://github.com/Speedrunlab):
+- [/reverse-engineer-anything-self-learning-loop](https://github.com/Speedrunlab/reverse-engineer-anything-self-learning-loop), examine a product you are authorised to rebuild, build your own, and improve it against the original until it is 100% there
 - [/hermes-agent-as-a-skill-file](https://github.com/Speedrunlab/hermes-agent-as-a-skill-file), a self-improvement loop for any agent
 - [/deep-audit](https://github.com/Speedrunlab/deep-audit), four-phase code auditor with evidence standards
 - [/read-before-write](https://github.com/Speedrunlab/read-before-write), forces an agent to read files before editing them
