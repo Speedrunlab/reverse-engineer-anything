@@ -710,3 +710,6 @@ needed tool is absent, say so and name the install step; do not auto-fetch it.
 Reverse Engineer Anything is written and maintained by Speedrun AI Labs
 (speedrunlab.ai). It depends on no external package or server, only the
 open-source tools you install yourself.
+
+Inspired by REA (Reverse Engineer Anything) by @morluto
+(github.com/morluto/rea); independent, not affiliated.
