@@ -55,6 +55,15 @@ The manifest answers a lot before any code:
 - **Network endpoints**: grep the decompiled tree and resource strings
   (`res/values/strings.xml`, `assets/`) for hosts and URLs. List them; mark which
   are reached by code you can see.
+- **Compile-time constants** (an API key, a base URL, a feature flag): a
+  `static final` field with a literal initialiser is stored in the class's
+  static values, so JADX prints it at the declaration and smali shows it as
+  `.field ... static final ...:Ljava/lang/String; = "..."`. List the fields
+  without their values, since the values can be keys:
+  `grep -rEh '^\.field .*static final [^=]*= "' <outdir>/smali*/ | sed -E 's/ = ".*$//' | sort -u > "$W/out/constants-<name>.txt"`
+  (`<outdir>` is the apktool root; count the matches first). The compiler
+  inlines a constant at every use site, so a value can appear in code with no
+  field named for it: search the declaration and the literal both.
 - **Bundled native code**: `lib/<abi>/*.so` are native libraries; route each to
   [native and managed](native-and-managed.md).
 - **Third-party SDKs**: package prefixes in the class tree and strings identify

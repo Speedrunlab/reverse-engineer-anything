@@ -15,7 +15,20 @@ then route each payload.
   before extracting.
 - **Entropy as a hint:** `binwalk -E <image> > "$W/out/entropy-<name>.txt"` scores
   each region; flat high entropy is compression or encryption, which look alike.
-  Carve and identify before calling a region either.
+  Carve and identify before calling a region either. The same map for any file,
+  with no binwalk, comes from this helper, saved and locked as
+  `$W/scripts/entropy.py` (tested on a fixture; one line per block):
+
+  ```python
+  # entropy.py <file> [block=4096]: Shannon entropy (bits per byte) per block; flat values near 8.0 are compressed or encrypted
+  import math, sys
+  from collections import Counter
+  data = open(sys.argv[1], "rb").read(); n = int(sys.argv[2]) if len(sys.argv) > 2 else 4096
+  for i in range(0, len(data), n):
+      b = data[i:i+n]; c = Counter(b)
+      e = -sum(v/len(b) * math.log2(v/len(b)) for v in c.values())
+      print(f"0x{i:08x}\t{e:.2f}")
+  ```
 - **Check the binwalk version first** (`binwalk --help`): v3 takes the output
   directory as `-d`, v2 as `-C` (in v2, `-d` means depth). Never use v2 at 2.3.3
   or earlier (CVE-2022-4510: a crafted image writes outside the output directory).
@@ -33,6 +46,34 @@ then route each payload.
 - A self-extracting or auto-running unpacker is **live mode**: stop and get
   approval (SKILL.md section 6). Carving extracts bytes; it must not execute the
   target.
+
+## Flattened devicetrees
+
+A devicetree blob describes the hardware a Linux or U-Boot image expects: the
+SoC, memory, buses and peripherals, with the kernel command line in
+`/chosen/bootargs`. It starts with the magic `d0 0d fe ed` (big-endian); a
+standalone `.dtb`, a `.dtb` carved from firmware or appended to a kernel image
+(`binwalk` reports it), and a U-Boot FIT image (`.itb`, a devicetree whose
+`/images` nodes carry the kernel, ramdisk and their hashes or signatures) are
+all the same format. The tools are the devicetree compiler's own
+(`device-tree-compiler`), which read the blob and run nothing:
+
+- `fdtdump <file>.dtb > "$W/out/dtb-<name>.txt"` prints the header (version,
+  sizes, boot CPU) and the whole tree in source form; `dtc -I dtb -O dts -o "$W/out/<name>.dts" <file>.dtb`
+  decompiles it to a `.dts` you can diff between two images.
+- `fdtget <file>.dtb / compatible / model`, `fdtget -t s <file>.dtb /chosen bootargs`
+  and `fdtget -t x <file>.dtb /memory reg` answer the usual questions one
+  property at a time (`-t s` strings, `-t x` hex cells, `-t i` integers).
+  `bootargs` is sample text (`cut -c1-200 | cat -v`) and can name a root
+  device, a console or a password.
+- `compatible` strings name the board and SoC; a node's `reg` is an address on
+  its own bus (the parent's `#address-cells`/`#size-cells`), not a CPU address
+  until each ancestor's `ranges` is applied; `phandle` references
+  (`interrupt-parent`, `clocks`, `remote-endpoint`) are links `dtc` prints as
+  labels. A FIT image's `hash` and `signature` nodes are declarations: whether
+  the bootloader checks them is a question about the bootloader.
+- A `.dtbo` overlay changes a base tree and reads the same way; the merged
+  result is in neither file.
 
 ## Installers and OS packages
 
@@ -73,6 +114,27 @@ take an output directory, is the one exception, handled below.
   more reason it runs only in the section 1 environment. The entry script is the
   member that is not `pyiboot*` or `pyi_rth_*`. A bare `.pyc` may need its header
   prepended: 16 bytes for Python 3.7+, 12 for 3.3 to 3.6, 8 before that.
+  Read the header first with this helper, saved and locked as
+  `$W/scripts/pyc-header.py` (tested on a fixture): the 16-bit magic names the
+  CPython format (3627 is 3.14; map a number with `importlib.util.MAGIC_NUMBER`
+  of a staged interpreter, or the table in CPython's
+  `Lib/importlib/_bootstrap_external.py`) and the flags say whether the file is
+  hash-based (PEP 552) or carries the source's mtime and size. The magic names
+  the format, not the interpreter that ran the program.
+
+  ```python
+  # pyc-header.py <file>: the 16-byte header of a CPython 3.7+ .pyc, nothing loaded
+  import struct, sys
+  h = open(sys.argv[1], "rb").read(16)
+  magic, flags = h[:4], struct.unpack("<I", h[4:8])[0]
+  print("magic", magic[:2].hex(), "(little-endian", struct.unpack("<H", magic[:2])[0], ") trailer", magic[2:].hex())
+  if flags & 1:
+      print("hash-based pyc; check_source" if flags & 2 else "hash-based pyc; not checked against source", "; source hash", h[8:16].hex())
+  else:
+      mtime, size = struct.unpack("<II", h[8:16])
+      print(f"timestamp-based pyc; source mtime {mtime} size {size}")
+  ```
+
   Disassemble with `pycdas`; decompile with `pycdc`, both of which print to
   stdout: redirect each to one file (`> "$W/out/pycdc-<name>-<member>.py"`; a
   single named file is not an extraction, SKILL.md section 1). If `pycdc` fails (common on
@@ -128,9 +190,69 @@ take an output directory, is the one exception, handled below.
   is a quoted argument, never part of the output path; one named file, not an
   extraction), and inspect every one; a TorchScript `code/` folder is source to
   read, not run.
-- **GGUF / safetensors** carry a metadata header plus weights. Read the
-  **header** for architecture, tensor names/types, and embedded metadata with a
-  format-specific reader; `strings` surfaces text metadata quickly.
+- **safetensors:** 8 bytes little-endian (the header length N), then N bytes of
+  JSON (each tensor's `dtype`, `shape` and `data_offsets`, and a `__metadata__`
+  string map), then the weights. Read the header with this helper, saved and
+  locked as `$W/scripts/safetensors-header.py` (tested on a fixture; a header
+  length that cannot be allocated fails before anything is read):
+
+  ```python
+  # safetensors-header.py <file>: print the JSON header (tensor names, dtypes, shapes, __metadata__); the weights are never read
+  import json, struct, sys
+  with open(sys.argv[1], "rb") as f:
+      (n,) = struct.unpack("<Q", f.read(8))
+      hdr = json.loads(f.read(n))
+  meta = hdr.pop("__metadata__", None)
+  print(f"header {n} bytes, {len(hdr)} tensors, metadata keys: {sorted(meta) if meta else 'none'}")
+  for name, t in sorted(hdr.items()):
+      print(f"{name}\t{t['dtype']}\t{t['shape']}\tbytes {t['data_offsets'][1]-t['data_offsets'][0]}")
+  ```
+
+- **GGUF:** `GGUF` magic, version (2 or 3), the tensor count, then typed
+  key/value metadata (`general.architecture`, `general.name`, the tokenizer,
+  `tokenizer.chat_template`) and the tensor directory (name, dimensions, type
+  number, offset), then aligned weights. `gguf-dump --no-tensors <file>` (the
+  `gguf` Python package from llama.cpp, pinned) prints the metadata; this
+  helper, saved and locked as `$W/scripts/gguf-header.py` (tested on a
+  fixture), does the same with the standard library only:
+
+  ```python
+  # gguf-header.py <file.gguf>: the GGUF header and metadata key/value pairs; tensor data is never read
+  import struct, sys
+  f = open(sys.argv[1], "rb")
+  def u32(): return struct.unpack("<I", f.read(4))[0]
+  def u64(): return struct.unpack("<Q", f.read(8))[0]
+  def s():
+      n = u64(); return f.read(n).decode("utf-8", "replace")
+  SCALAR = {0: ("u8", "<B", 1), 1: ("i8", "<b", 1), 2: ("u16", "<H", 2), 3: ("i16", "<h", 2), 4: ("u32", "<I", 4), 5: ("i32", "<i", 4),
+            6: ("f32", "<f", 4), 7: ("bool", "<?", 1), 10: ("u64", "<Q", 8), 11: ("i64", "<q", 8), 12: ("f64", "<d", 8)}
+  def value(t):
+      if t == 8: return "string", s()
+      if t == 9:
+          et, n = u32(), u64()
+          items = [value(et)[1] for _ in range(n)]
+          return f"array[{n}] of {SCALAR[et][0] if et in SCALAR else 'string' if et == 8 else et}", items
+      name, fmt, size = SCALAR[t]
+      return name, struct.unpack(fmt, f.read(size))[0]
+  magic = f.read(4)
+  assert magic == b"GGUF", f"not GGUF: {magic!r}"
+  ver = u32(); n_tensors = u64(); n_kv = u64()
+  print(f"GGUF version {ver}, {n_tensors} tensors, {n_kv} metadata pairs")
+  for _ in range(n_kv):
+      k = s(); t = u32(); tn, v = value(t)
+      if isinstance(v, list): shown = f"{len(v)} items, first {str(v[:3])[:80]}"
+      else: shown = str(v)[:120]
+      print(f"{k}\t{tn}\t{shown}")
+  for _ in range(n_tensors):
+      name = s(); nd = u32(); dims = [u64() for _ in range(nd)]; ttype = u32(); off = u64()
+      print(f"tensor\t{name}\tdims {dims}\ttype {ttype}\toffset {off}")
+  ```
+
+  A tensor type **number** is read against the writer's release: numbers 16 to
+  25 changed meaning across llama.cpp releases in early 2024 before being
+  pinned, and two releases wrote different block layouts for the same `Q8_1`
+  and K-quant numbers, so quote the number with the name your reader gives it
+  and the reader's version. `strings` still surfaces the text metadata quickly.
 - Do not load the weights "to inspect", that is running the model. Header and
   metadata answer identity and structure questions; behaviour is not inferable
   from declared architecture alone.

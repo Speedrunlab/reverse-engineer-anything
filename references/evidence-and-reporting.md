@@ -103,8 +103,11 @@ When the user builds a reimplementation from the findings, verify it the way a
 finding is verified. Write the observed behaviours as a finite list of typed
 claims (input, expected output, and the ledger entry each came from: a code path
 read, or a recorded session), run the reimplementation against that list, and
-report passes against the claim count, with the vectors kept as evidence in
-`$W/out/verify-<name>.txt` (free of recorded credentials). A full pass covers the
+give every claim one outcome: passed, failed, not applicable (the claim does not
+apply to this build) or could not be tested (the input or the environment was
+not available), reporting the count of each against the claim total, with the
+vectors kept as evidence in `$W/out/verify-<name>.txt` (free of recorded
+credentials). Only passed and failed are results; the other two stay open. A full pass covers the
 declared claims only, never equivalence; a behaviour nobody wrote down stays
 unknown, and a claim that needed a live observation to state is marked so.
 

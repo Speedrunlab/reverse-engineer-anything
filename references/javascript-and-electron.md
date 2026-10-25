@@ -1,8 +1,8 @@
 # JavaScript and Electron applications
 
-Covers shipped JavaScript: bundled/minified web apps, Node packages, and
-Electron desktop apps (where the application layer is JavaScript inside an ASAR
-archive). Static and read-only; cite the sample's SHA-256.
+Covers shipped JavaScript: bundled/minified web apps, Node packages, Node.js
+single-executable applications, and Electron desktop apps (where the
+application layer is JavaScript inside an ASAR archive). Static and read-only; cite the sample's SHA-256.
 
 ## Electron: find and extract the app layer
 
@@ -35,6 +35,80 @@ JavaScript, in `resources/app.asar` (Windows/Linux) or
   (tested on a fixture). No sentinel means unknown, not disabled.
   `EnableNodeCliInspectArguments` disabled or removed means the app ignores
   `--inspect`, which bounds any approved live step; a fuse is off-limits to defeat.
+
+## Node.js single-executable applications
+
+A Node.js single executable (SEA) is a copy of the `node` binary with the
+application's script, and optionally its assets, a V8 code cache or a heap
+snapshot, injected as a resource named `NODE_SEA_BLOB`; at start-up `node` runs
+that blob instead of reading a script. Nothing about it is Electron.
+
+- **Identify:** `LC_ALL=C grep -aoE 'NODE_SEA_FUSE_[0-9a-f]{32}:[01]' <bin>`
+  prints the fuse string: `:1` means a blob was injected, `:0` is a plain
+  `node` binary, and no match means not a Node binary (or one with the string
+  removed).
+- **Extract the blob**, one named file in `out/` (not an extraction). macOS:
+  `otool -l <bin> | grep -B1 -A4 'sectname NODE_SEA_BLOB'` shows the section in
+  the `NODE_SEA` segment, and `segedit <bin> -extract NODE_SEA NODE_SEA_BLOB "$W/out/sea-<name>.blob"`
+  writes it (tested on a fixture built with the linker's `-sectcreate`). Linux:
+  the blob is an ELF note whose owner is `NODE_SEA_BLOB` (`readelf -n <bin> | grep -A2 NODE_SEA`);
+  write it out with the helper below, saved and locked as
+  `$W/scripts/elf-note.py` (tested on a synthetic ELF). Windows: an `RT_RCDATA`
+  resource named `NODE_SEA_BLOB`: `wrestool -l <exe> | grep -i NODE_SEA`, then
+  `wrestool -x --raw -t 10 -n NODE_SEA_BLOB -o "$W/out/sea-<name>.blob" <exe>`.
+
+  ```python
+  # elf-note.py <elf> <owner> <out-file>: write the descriptor of the first note whose owner matches (PT_NOTE segments first, SHT_NOTE sections if there are no program headers). Nothing is loaded.
+  import struct, sys
+  path, want, out = sys.argv[1], sys.argv[2].encode(), sys.argv[3]
+  d = open(path, "rb").read()
+  assert d[:4] == b"\x7fELF", "not ELF"
+  cls, end = d[4], "<" if d[5] == 1 else ">"
+  if cls == 2:
+      phoff, shoff = struct.unpack(end + "QQ", d[32:48]); phentsize, phnum, shentsize, shnum = struct.unpack(end + "HHHH", d[54:62])
+  else:
+      phoff, shoff = struct.unpack(end + "II", d[28:36]); phentsize, phnum, shentsize, shnum = struct.unpack(end + "HHHH", d[42:50])
+  ranges = []
+  for i in range(phnum):
+      ph = d[phoff + i * phentsize: phoff + (i + 1) * phentsize]
+      if cls == 2:
+          p_type, _, p_offset, _, _, p_filesz = struct.unpack(end + "IIQQQQ", ph[:40])
+      else:
+          p_type, p_offset, _, _, p_filesz = struct.unpack(end + "IIIII", ph[:20])
+      if p_type == 4: ranges.append((p_offset, p_filesz))
+  if not ranges:
+      for i in range(shnum):
+          sh = d[shoff + i * shentsize: shoff + (i + 1) * shentsize]
+          sh_type = struct.unpack(end + "I", sh[4:8])[0]
+          if sh_type == 7:
+              off, size = (struct.unpack(end + "QQ", sh[24:40]) if cls == 2 else struct.unpack(end + "II", sh[16:24]))
+              ranges.append((off, size))
+  for off, size in ranges:
+      p, stop = off, off + size
+      while p + 12 <= stop:
+          namesz, descsz, ntype = struct.unpack(end + "III", d[p:p+12]); p += 12
+          name = d[p:p+namesz].rstrip(b"\0"); p += (namesz + 3) & ~3
+          desc = d[p:p+descsz]; p += (descsz + 3) & ~3
+          print(f"note owner {name!r} type {ntype} desc {descsz} bytes")
+          if name == want:
+              open(out, "wb").write(desc); print("written", out); sys.exit(0)
+  print("no note with that owner"); sys.exit(1)
+  ```
+
+- **Read the blob:** it begins with the magic bytes `20 da 43 01`, a flags word
+  (bit 0: the experimental warning disabled; bit 1: a V8 heap snapshot instead
+  of script source; bit 2: a code cache follows; bit 3: assets follow; bit 4:
+  `execArgv` follows) and one extension byte, then the script's path and its
+  source as length-prefixed strings (Node 24's `node_sea.h`). With bit 1 clear
+  the source is plain text: `strings -a -n 8 "$W/out/sea-<name>.blob" | head -3 | cut -c1-120 | cat -v`
+  shows the path and the first lines; copy the script out and read it as a
+  bundle (next section). With bit 1 set the blob holds a serialised heap, not
+  source: record that limit. A code cache is V8 bytecode for the same script,
+  not extra logic; assets follow as name and bytes pairs, each named in the
+  inventory.
+- The host is unchanged `node`: its imports and strings are the runtime's, not
+  the app's. The app can still load files from disk (`createRequire`), so list
+  the paths the script names as part of the surface.
 
 ## Minified and bundled JavaScript
 

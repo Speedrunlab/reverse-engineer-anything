@@ -2,6 +2,55 @@
 
 Reverse Engineer Anything. Newest first.
 
+## v1.15.0 (25 Oct 2026)
+
+Coverage pass against release 6.8.0 (25 Oct 2026) of REA by @morluto, the
+project this skill was inspired by (not affiliated): its new target types and
+inspections were lined up against the routes here and the gaps filled, each as
+the same static, read-only, evidence-first recipe on standard tools.
+
+- New routes: Linux kernel modules (`.modinfo`, `__versions`, the appended
+  signature trailer, compressed `.ko`), Node.js single-executable applications
+  (the fuse string; the blob in a Mach-O section, an ELF note or a PE resource;
+  then the JavaScript route), flattened devicetrees (`fdtdump`, `dtc`, `fdtget`,
+  FIT images), GameCube and Wii DOL executables (a header reader, Ghidra with
+  the GameCube loader), and Apple `.ips` crash reports read with `jq` and
+  symbolicated offline with `atos`.
+- PE: import, delay-load and export tables and the import hash; TLS callbacks
+  and the load configuration (SafeSEH, CFG, the security cookie) as linker
+  declarations; the signer chain offline from an extracted Authenticode
+  signature; any-architecture ELF reading; compressed sections; one function
+  by name with `objdump`.
+- Firmware: peripheral registers named from a CMSIS-SVD file (SVD-Loader); an
+  entropy map for any file.
+- Managed, Go, Rust, Unity: IL call and field-access edges; ReadyToRun images;
+  a universal Mach-O thinned before `go version -m` and `rust-audit-info`; the
+  IL2CPP metadata magic and version.
+- Android: compile-time constants (`static final` values) and their inlining.
+- Captures: protobuf and gRPC bodies decoded with `protoc --decode_raw`, the
+  gRPC frame and the gRPC-web forms.
+- Model files and bytecode: header readers for safetensors and GGUF (and
+  `gguf-dump`), the ambiguity of early GGUF type numbers, the `.pyc` header
+  (magic, hash-based or timestamp).
+- Evidence: each reconstruction claim gets one outcome (passed, failed, not
+  applicable, could not be tested).
+- Toolchain: nine rows added, three amended.
+
+Tested here on fixtures built for the purpose or on a system file: the `.ips`
+reads and `atos`, `segedit` extraction of a Mach-O section, the ELF note
+extractor, the module-signature trailer reader, the DOL header reader, the
+safetensors and GGUF header readers, the `.pyc` header reader, the entropy
+helper, `llvm-objdump --disassemble-symbols`, the gRPC frame strip and the
+IL2CPP version read. Not run here (tool absent on this host; command forms
+checked against each tool's own documentation or source): `llvm-readobj`,
+`pefile`, `osslsigncode extract-signature`, `modinfo`,
+`modprobe --show-modversions`, `fdtdump`, `dtc`, `fdtget`, `protoc`,
+`gguf-dump`, `wrestool --raw`, SVD-Loader, the GameCube loader.
+
+Deliberately not replicated, as before (the toolkit, not the analysis): agent
+environments served from a capture, retained summaries and evidence paging,
+recovery settings and the JSON Lines output.
+
 ## v1.14.0 (23 Oct 2026)
 
 Coverage pass: the target types a general reverse-engineering toolkit is

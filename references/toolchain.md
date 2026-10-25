@@ -51,16 +51,16 @@ process that runs unreviewed code at install time.
 | Pickle inspection | `pickletools` (stdlib), through the skill's `pickle-dis.py` helper | Python | Disassemble every pickle in a file without loading it (plain `python3 -m pickletools` stops at the first). |
 | ZIP | `unzip` (Info-ZIP), or `bsdtar` | distro packages | List (`unzip -l`) and stream single members (`unzip -p`) of jars and other ZIPs. |
 | Java / JVM | `javap` (JDK), **CFR** or **Vineflower**, `jarsigner` | jdk; github.com/leibnitz27/cfr, github.com/Vineflower/vineflower | Disassemble and decompile `.class`/`.jar`. |
-| PyInstaller / pyc | `pyinstxtractor`, `pyi-archive_viewer` (PyInstaller), **pycdc**/`pycdas` | github.com/extremecoders-re/pyinstxtractor, github.com/zrax/pycdc | Unpack a PyInstaller exe and disassemble/decompile `.pyc`. |
+| PyInstaller / pyc | `pyinstxtractor`, `pyi-archive_viewer` (PyInstaller), **pycdc**/`pycdas`; the skill's `pyc-header.py` | github.com/extremecoders-re/pyinstxtractor, github.com/zrax/pycdc | Unpack a PyInstaller exe and disassemble/decompile `.pyc`; read the header first. |
 | macOS bundles / packages | `plutil`, `codesign`, `lipo`, `pkgutil` | built into macOS | Read Info.plist, entitlements, architectures, package signatures. |
 | Windows / Linux installers | `msitools` (`msiinfo`, `msiextract`), `innoextract`, `unshield`, `cabextract`, `dpkg-deb`, `rpm`, `bsdtar` (libarchive) | distro packages | Unpack installers and OS packages without running them. |
 | macOS packages / signing | `xar`, `xcrun stapler`; `rcodesign` on Linux | Xcode command-line tools; github.com/indygreg/apple-platform-rs | Expand `.pkg`; check stapled notarisation; read Apple signatures off-Mac. |
-| Crash and core dumps | `gdb`, Breakpad `minidump_stackwalk`, `atos` (macOS) or `llvm-symbolizer` | distro packages; chromium.googlesource.com/breakpad; LLVM | Post-mortem backtraces and symbolication; never `run`; gdb with `set print frame-arguments none`. |
+| Crash and core dumps | `gdb`, Breakpad `minidump_stackwalk`, `atos` (macOS) or `llvm-symbolizer`; `jq` for `.ips` | distro packages; chromium.googlesource.com/breakpad; LLVM | Post-mortem backtraces and symbolication; never `run`; gdb with `set print frame-arguments none`. |
 | SBOM / component scan | **syft** (+ `grype` or `osv-scanner` for vulns, DB staged) | github.com/anchore/syft | Inventory components. syft has no DB; `SYFT_CHECK_FOR_APP_UPDATE=false` stops its only network call. |
 | Android | **apktool**, **JADX**, `aapt2` | github.com/iBotPeaches/Apktool, github.com/skylot/jadx; `aapt2` from Android SDK build-tools | apktool for resources/manifest, JADX for Java/Kotlin. |
 | JavaScript / Electron | `@electron/asar`, `prettier` (formatting), the `source-map` package | npm (pinned, `--ignore-scripts`) | Extract ASAR, then format and map back. |
 | Android extras | `bundletool`, `apksigner` | github.com/google/bundletool; Android SDK build-tools | AAB to APK; signing certificates. |
-| PE signatures | `osslsigncode` | github.com/mtrojnar/osslsigncode | Read Authenticode signatures. |
+| PE signatures | `osslsigncode` | github.com/mtrojnar/osslsigncode | Verify Authenticode against a staged CA bundle (`-ignore-cdp` offline); `extract-signature -pem` plus `openssl pkcs7` names the signer. |
 | JSON (HAR, metadata) | `jq` | jqlang.org | Query HAR files and JSON output. |
 | Firmware / packed | **binwalk**, **unblob**, `7zz`, `unsquashfs` | github.com/ReFirmLabs/binwalk, github.com/onekey-sec/unblob, 7-zip.org | Carve embedded filesystems and blobs. `7zz` is official 7-Zip; `7z` is p7zip. |
 | WebAssembly | **WABT** (`wasm2wat`, `wasm-objdump`) | github.com/WebAssembly/wabt | Text form and section inventory; `wasm-decompile` only in WABT 1.0.41 and earlier. |
@@ -83,6 +83,15 @@ process that runs unreviewed code at install time.
 | JavaScript unminifying | `wakaru` (`@wakaru/cli`) | npm (pinned, `--ignore-scripts`) | Rewrites a bundle into modules; output is not source. |
 | HarmonyOS | `ark_disasm` | OpenHarmony SDK toolchains | Disassembles `modules.abc`. |
 | React Native (Hermes) | `hermes-dec` | github.com/P1sec/hermes-dec | Disassembles and decompiles Hermes bytecode. |
+| PE tables | `llvm-readobj` (`--coff-imports`, `--coff-exports`, `--coff-tls-directory`, `--coff-load-config`); `llvm-objdump` (`--disassemble-symbols`) | LLVM releases (github.com/llvm/llvm-project); not in Apple's command-line tools | Imports, delay-loads, exports, TLS callbacks, load configuration; one function by name. |
+| PE in Python | `pefile` | github.com/erocarrera/pefile (pip, `--require-hashes`) | The same directories as objects; `get_imphash()`; the TLS callback array. |
+| Linux kernel modules | `kmod` (`modinfo`, `modprobe --show-modversions`); the kernel tree's `scripts/extract-module-sig.pl`; the skill's `modsig.py` | distro packages; kernel.org | `.modinfo`, symbol CRCs, the signature trailer; `readelf -p .modinfo` works on any host. |
+| Devicetrees | `dtc`, `fdtdump`, `fdtget` (device-tree-compiler); `dumpimage` (u-boot-tools) for FIT images, optional | distro packages; git.kernel.org/pub/scm/utils/dtc/dtc.git | Decompile and query `.dtb`/`.itb`; read only. |
+| Node.js single executables | `segedit` (Xcode command-line tools), `wrestool` (icoutils), the skill's `elf-note.py` | built into macOS; nongnu.org/icoutils | Extract the `NODE_SEA_BLOB` resource from a Mach-O, PE or ELF carrier. |
+| Protobuf and gRPC bodies | `protoc` (`--decode_raw`, `--decode`) | github.com/protocolbuffers/protobuf releases | Decode a captured message with or without its schema; nothing is fetched. |
+| GGUF and safetensors | `gguf-dump` (the `gguf` package from llama.cpp's `gguf-py`); the skill's `gguf-header.py` and `safetensors-header.py` | pip (`--require-hashes`); github.com/ggml-org/llama.cpp | Metadata and the tensor directory only; weights are never loaded. |
+| GameCube / Wii DOL | Ghidra GameCube Loader extension | github.com/Cuyler36/Ghidra-GameCube-Loader (Apache 2.0) | Loads DOL and REL, adds the Gekko/Broadway language; the skill's `dol-header.py` reads the header without it. |
+| Firmware peripheral registers | SVD-Loader-Ghidra (`SVD-Loader.py`) with a CMSIS-SVD file | github.com/leveldown-security/SVD-Loader-Ghidra (GPL 3.0); github.com/cmsis-svd/cmsis-svd-data | Labels memory-mapped registers in Ghidra from the chip's SVD. |
 | Live only (SKILL.md section 6) | `adb` (platform-tools), Frida, `strace`, `ltrace` | Android SDK; frida.re; distro packages | Inside the isolated VM, under a session envelope. |
 
 ## Keeping it safe for the whole organisation

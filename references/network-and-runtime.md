@@ -83,6 +83,25 @@ A saved capture is just a file. Read it; do not replay or fetch from it.
   To test a reimplementation against recorded behaviour, derive the endpoint and
   shape list from the capture and write a local stub with normal coding tools;
   recorded values are never replayed to the real host.
+- **Protobuf and gRPC bodies.** A body with content type `application/x-protobuf`,
+  `application/grpc` (`+proto`), `application/grpc-web+proto` or
+  `application/grpc-web-text` is a binary message, not JSON. Get one body out
+  as a file, never into context: from a HAR,
+  `jq -r '.log.entries[<i>].response.content | select(.encoding == "base64") | .text' <file> | base64 -d > "$W/out/body-<name>-<i>.bin"`
+  (a `grpc-web-text` body is base64 twice: decode again); from a pcap, only a
+  cleartext stream or one the operator's own key log decrypts
+  (`-o tls.keylog_file:<file>`, a secret staged in the environment):
+  `tshark -nr <file> -Y 'grpc.message_data' -T fields -e grpc.message_data | sed -n '<n>p' | xxd -r -p > "$W/out/body-<name>-<n>.bin"`.
+  A gRPC body is framed: one byte (0 plain, 1 compressed as `grpc-encoding`
+  says), four bytes big-endian length, then the message, repeated; strip a
+  frame with `tail -c +6` (tested) and decompress if flagged. Decode without a
+  schema with `protoc --decode_raw < "$W/out/body-<name>-<i>.bin" > "$W/out/decode-<name>-<i>.txt"`:
+  it prints field numbers and raw values, and a length-delimited field may be a
+  string, bytes, a nested message or packed numbers, so names and types stay
+  inferences until the operator supplies the `.proto`
+  (`protoc --proto_path=<dir> --decode=<pkg.Message> <file>.proto < body.bin`;
+  the schema is theirs, never fetched). gRPC-web's last frame (flag bit `0x80`)
+  is the trailer block, `grpc-status` and `grpc-message` as header text.
 - **Saved mitmproxy flows**: `mitmdump -n -r <flows> > "$W/out/flows-<name>.txt"`,
   read with targeted searches, since it prints full URLs; `-n` starts no proxy
   listener; never use replay options. Treat bodies as recorded evidence, not live
