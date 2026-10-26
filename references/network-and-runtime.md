@@ -88,13 +88,22 @@ A saved capture is just a file. Read it; do not replay or fetch from it.
   `application/grpc-web-text` is a binary message, not JSON. Get one body out
   as a file, never into context: from a HAR,
   `jq -r '.log.entries[<i>].response.content | select(.encoding == "base64") | .text' <file> | base64 -d > "$W/out/body-<name>-<i>.bin"`
-  (a `grpc-web-text` body is base64 twice: decode again); from a pcap, only a
+  when the entry says `"encoding": "base64"` (an entry without it holds text,
+  and this form writes an empty file for it: check the size). A `grpc-web-text`
+  body is base64 on top, each frame encoded and padded on its own, so decode it
+  chunk by chunk, `grep -oE '[A-Za-z0-9+/]+=*' <text> | while read -r c; do printf '%s' "$c" | base64 -d; done > "$W/out/body-<name>-<i>.bin"`
+  (`base64 -d` on the whole body stops at the first padding; tested). From a
+  pcap, only a
   cleartext stream or one the operator's own key log decrypts
   (`-o tls.keylog_file:<file>`, a secret staged in the environment):
-  `tshark -nr <file> -Y 'grpc.message_data' -T fields -e grpc.message_data | sed -n '<n>p' | xxd -r -p > "$W/out/body-<name>-<n>.bin"`.
-  A gRPC body is framed: one byte (0 plain, 1 compressed as `grpc-encoding`
-  says), four bytes big-endian length, then the message, repeated; strip a
-  frame with `tail -c +6` (tested) and decompress if flagged. Decode without a
+  `"$W/scripts/run.sh" bash -c 'set -o pipefail; timeout 600 tshark -nr "$1" -Y grpc.message_data -T fields -e grpc.message_data | sed -n "$2p" | xxd -r -p > "$3"' _ <file> <n> "$W/out/body-<name>-<n>.bin"`
+  (the field is one message with its frame head already removed, decompressed
+  when flagged: Wireshark's dissector). A gRPC body from a HAR is framed: one
+  byte (0 plain, 1 compressed as `grpc-encoding` says), four bytes big-endian
+  length, then the message, repeated. Take the first message by its declared
+  length, `n=$((0x$(xxd -p -s 1 -l 4 <body>))); tail -c +6 <body> | head -c "$n" > <msg>`
+  (tested; `tail -c +6` alone is right only for a single-frame body), decompress
+  it if flagged, and walk on by 5 + n for the next frame. Decode without a
   schema with `protoc --decode_raw < "$W/out/body-<name>-<i>.bin" > "$W/out/decode-<name>-<i>.txt"`:
   it prints field numbers and raw values, and a length-delimited field may be a
   string, bytes, a nested message or packed numbers, so names and types stay

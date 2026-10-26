@@ -2,6 +2,92 @@
 
 Reverse Engineer Anything. Newest first.
 
+## v1.16.0 (26 Oct 2026)
+
+Hardening round 14: the v1.15.0 additions walked by three fresh readers (an
+adversarial read of the diff, the five new routes end to end on fixtures, the
+additions to existing routes), proven findings only: every behavioural finding
+was reproduced here before its fix and every tool fact re-read at the tool's
+own source. The three reports overlapped heavily; the fixes:
+
+- Apple `.ips` symbolication: the report's `base` and `imageOffset` are decimal
+  and `atos` reads hex with or without `0x`, so the recipe converts first; a
+  decimal value named the wrong symbol with no error. `exception.signal` and a
+  placeholder `usedImages` entry are marked optional; the `.crash` text format
+  and `llvm-symbolizer` for ELF addresses are back in the bullet.
+- Node.js single executables: the Mach-O section is `__NODE_SEA_BLOB` (postject
+  and `node --build-sea` prepend two underscores to the documented name); the
+  `otool` and `segedit` lines use it. The 25 Oct fixture had been built with the
+  bare name, so it tested the assumption rather than the tool; the fixture is
+  now a blob written by `node --experimental-sea-config` (magic, flags and the
+  8-byte little-endian lengths checked). The ELF note dump is bounded, a missing
+  fuse is no longer called proof of a non-Node file, and `strings -n 4` shows a
+  short script path.
+- Linux kernel modules: the kernel's `sign-file` writes a detached CMS signature
+  with no certificate, so the signer line printed nothing with `-print_certs`;
+  `openssl pkcs7 -print` names the issuer and serial (tested on OpenSSL 3 and
+  LibreSSL). Compressed modules decompress with `-c` into `out/` (`xz -dk` and
+  `gunzip -k` wrote beside the read-only original). `readelf -SW` keeps long
+  section names whole. The code lives in `.text`, `.init.text` and `.exit.text`;
+  `__ksymtab*` is data.
+- GameCube DOL and SKILL.md: `file` labels the usual DOL layout an "Apple
+  HFS/HFS+ resource fork"; said so, and the routing text no longer claims `file`
+  names a carrier for it.
+- Unity IL2CPP: the metadata-version map was wrong at both ends (24 begins at
+  2017.1; 31 ends at Unity 6.2; 35 and up are Unity 6.3 onward), corrected from
+  the Il2CppInspector version table.
+- Protobuf and gRPC: `tail -c +6` strips one frame head only, so the first
+  message is now cut by its declared length and later frames walked; a
+  `grpc-web-text` body is base64 per frame and is decoded chunk by chunk
+  (`base64 -d` on the whole body fails at the first padding); `tshark`'s
+  `grpc.message_data` is already unframed and that line follows the guide's own
+  `timeout` and `pipefail` rule; a HAR entry without `encoding` is text, and the
+  base64 form writes an empty file for it, said so.
+- One function by name: Mach-O symbols carry a leading underscore; a missing
+  symbol is a warning with exit 0 and an empty body; range options take the `=`
+  form. Apple's `llvm-objdump` is in the command-line tools but carries four
+  target families, not every backend; the toolchain row says which.
+- Android compile-time constants: the grep keeps the file (the owning class is
+  citable and same-named fields do not merge) and any literal, since the lead
+  names feature flags; `= "` narrows it to strings.
+- Firmware: the private peripheral bus is `0xE0000000` to `0xE00FFFFF` (the
+  System Control Space starts at `0xE000E000`); `dumpimage -l` is named for FIT
+  images in the section, not only the toolchain row; the segedit row no longer
+  calls it "built into macOS".
+- Managed code: `ldftn`, `ldvirtftn`, `ldflda` and `ldsflda` join the edge
+  opcodes, so a method taken as a delegate has a caller.
+- Authenticode: `-ignore-cdp` needs osslsigncode 2.8 or later; a timestamped
+  signature needs `-TSA-CAfile` or `-ignore-timestamp`.
+- Model files and bytecode: the safetensors reader stops at the format's 100 MB
+  header cap and on a truncated header (a bogus length read the whole file into
+  memory, or printed success for a length longer than the file); the GGUF
+  reader refuses versions other than 2 and 3, big-endian files and absurd counts
+  or lengths; the unsourced claim about `Q8_1` block layouts is gone; the `.pyc`
+  table pointer names `pycore_magic_number.h` for 3.14 and the reader refuses a
+  header without `0d 0a`.
+- Every helper ends with a one-line reason on empty, truncated or corrupt input
+  instead of a traceback; the module-signature reader refuses a `sig_len` longer
+  than the file instead of writing garbage; the entropy helper prints 0.00, not
+  -0.00, for a constant block, and the text says why a short last block cannot
+  reach 8.0.
+- Evidence: a full pass is defined (every claim passed or not applicable, none
+  untested). SKILL.md's rows name `pyc-header.py` and `entropy.py`; the
+  toolchain lists `entropy.py`.
+
+Tested here: every helper on good, empty, truncated and corrupt fixtures; the
+gRPC frame cut and the chunked decode; the Android grep on a smali fixture;
+`atos` with decimal and hex; `segedit` and `otool` on a carrier holding a real
+blob; `llvm-objdump` with a present, missing and underscored symbol and both
+range forms; `openssl pkcs7 -print` on a certificate-less CMS signature;
+`xz -dc` and `gunzip -c`; `llvm-readelf -n` and `-SW`; `file` on DOL fixtures.
+Doc-checked, not run (tool absent here): `dumpimage -l`, the `osslsigncode`
+options and their versions, `tshark`'s field semantics (Wireshark's dissector
+source), GNU `readelf` name truncation, `llvm-symbolizer --obj`.
+
+Correction to the v1.15.0 note: its "not run here" list also omitted `tshark`,
+`readelf`, `ilspycmd` and `osslsigncode verify`, and "as before" referred to
+the 23 Oct coverage pass, recorded outside this file.
+
 ## v1.15.0 (25 Oct 2026)
 
 Coverage pass against release 6.8.0 (25 Oct 2026) of REA by @morluto, the

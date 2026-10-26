@@ -17,16 +17,22 @@ then route each payload.
   each region; flat high entropy is compression or encryption, which look alike.
   Carve and identify before calling a region either. The same map for any file,
   with no binwalk, comes from this helper, saved and locked as
-  `$W/scripts/entropy.py` (tested on a fixture; one line per block):
+  `$W/scripts/entropy.py` (tested on a fixture; one line per block, and a short
+  last block cannot reach 8.0, since n bytes carry at most log2(n) bits each):
 
   ```python
-  # entropy.py <file> [block=4096]: Shannon entropy (bits per byte) per block; flat values near 8.0 are compressed or encrypted
+  # entropy.py <file> [block bytes, default 4096]: Shannon entropy (bits per byte) per block; flat values near 8.0 are compressed or encrypted
   import math, sys
   from collections import Counter
-  data = open(sys.argv[1], "rb").read(); n = int(sys.argv[2]) if len(sys.argv) > 2 else 4096
+  data = open(sys.argv[1], "rb").read()
+  try:
+      n = int(sys.argv[2]) if len(sys.argv) > 2 else 4096
+      if n < 1: raise ValueError
+  except ValueError:
+      print("block size must be a whole number of bytes, for example 4096"); sys.exit(1)
   for i in range(0, len(data), n):
       b = data[i:i+n]; c = Counter(b)
-      e = -sum(v/len(b) * math.log2(v/len(b)) for v in c.values())
+      e = abs(sum(v/len(b) * math.log2(v/len(b)) for v in c.values()))
       print(f"0x{i:08x}\t{e:.2f}")
   ```
 - **Check the binwalk version first** (`binwalk --help`): v3 takes the output
@@ -71,7 +77,8 @@ all the same format. The tools are the devicetree compiler's own
   until each ancestor's `ranges` is applied; `phandle` references
   (`interrupt-parent`, `clocks`, `remote-endpoint`) are links `dtc` prints as
   labels. A FIT image's `hash` and `signature` nodes are declarations: whether
-  the bootloader checks them is a question about the bootloader.
+  the bootloader checks them is a question about the bootloader; `dumpimage -l <itb>`
+  (u-boot-tools) lists its components without extracting any.
 - A `.dtbo` overlay changes a base tree and reads the same way; the merged
   result is in neither file.
 
@@ -118,14 +125,19 @@ take an output directory, is the one exception, handled below.
   `$W/scripts/pyc-header.py` (tested on a fixture): the 16-bit magic names the
   CPython format (3627 is 3.14; map a number with `importlib.util.MAGIC_NUMBER`
   of a staged interpreter, or the table in CPython's
-  `Lib/importlib/_bootstrap_external.py`) and the flags say whether the file is
-  hash-based (PEP 552) or carries the source's mtime and size. The magic names
+  `Lib/importlib/_bootstrap_external.py` up to 3.13 and
+  `Include/internal/pycore_magic_number.h` from 3.14) and the flags say whether
+  the file is hash-based (PEP 552) or carries the source's mtime and size; a
+  file whose bytes 2 and 3 are not `0d 0a` has no 3.7+ header, and the helper
+  says so. The magic names
   the format, not the interpreter that ran the program.
 
   ```python
   # pyc-header.py <file>: the 16-byte header of a CPython 3.7+ .pyc, nothing loaded
   import struct, sys
   h = open(sys.argv[1], "rb").read(16)
+  if len(h) < 16 or h[2:4] != b"\r\n":
+      print(f"not a CPython 3.7+ pyc header ({len(h)} bytes read; bytes 2 and 3 must be 0d 0a): a headerless or older-format file"); sys.exit(1)
   magic, flags = h[:4], struct.unpack("<I", h[4:8])[0]
   print("magic", magic[:2].hex(), "(little-endian", struct.unpack("<H", magic[:2])[0], ") trailer", magic[2:].hex())
   if flags & 1:
@@ -194,14 +206,24 @@ take an output directory, is the one exception, handled below.
   JSON (each tensor's `dtype`, `shape` and `data_offsets`, and a `__metadata__`
   string map), then the weights. Read the header with this helper, saved and
   locked as `$W/scripts/safetensors-header.py` (tested on a fixture; a header
-  length that cannot be allocated fails before anything is read):
+  length over the format's 100 MB cap, or longer than the file, stops it before
+  anything is read):
 
   ```python
   # safetensors-header.py <file>: print the JSON header (tensor names, dtypes, shapes, __metadata__); the weights are never read
   import json, struct, sys
+  LIMIT = 100_000_000  # the format's own header cap
   with open(sys.argv[1], "rb") as f:
-      (n,) = struct.unpack("<Q", f.read(8))
-      hdr = json.loads(f.read(n))
+      raw = f.read(8)
+      if len(raw) < 8: print("shorter than the 8-byte length field: not a safetensors file"); sys.exit(1)
+      (n,) = struct.unpack("<Q", raw)
+      if n == 0 or n > LIMIT: print(f"header length {n} is outside the format's limit (1 to {LIMIT} bytes): not a safetensors file worth reading"); sys.exit(1)
+      buf = f.read(n)
+      if len(buf) != n: print(f"header truncated: {len(buf)} of {n} bytes present"); sys.exit(1)
+  try:
+      hdr = json.loads(buf)
+  except ValueError as e:
+      print(f"header is not JSON ({e}): not a safetensors file"); sys.exit(1)
   meta = hdr.pop("__metadata__", None)
   print(f"header {n} bytes, {len(hdr)} tensors, metadata keys: {sorted(meta) if meta else 'none'}")
   for name, t in sorted(hdr.items()):
@@ -214,29 +236,43 @@ take an output directory, is the one exception, handled below.
   number, offset), then aligned weights. `gguf-dump --no-tensors <file>` (the
   `gguf` Python package from llama.cpp, pinned) prints the metadata; this
   helper, saved and locked as `$W/scripts/gguf-header.py` (tested on a
-  fixture), does the same with the standard library only:
+  fixture), prints the metadata and the tensor directory with the standard
+  library only, and stops on a version other than 2 or 3, a big-endian file or
+  an absurd length:
 
   ```python
-  # gguf-header.py <file.gguf>: the GGUF header and metadata key/value pairs; tensor data is never read
+  # gguf-header.py <file.gguf>: the GGUF header, metadata key/value pairs and tensor directory; tensor data is never read
   import struct, sys
+  LIMIT = 100_000_000  # longest string or array accepted; a header field beyond it is corrupt or hostile
   f = open(sys.argv[1], "rb")
-  def u32(): return struct.unpack("<I", f.read(4))[0]
-  def u64(): return struct.unpack("<Q", f.read(8))[0]
+  def rd(n):
+      b = f.read(n)
+      if len(b) != n: print("truncated: the header runs past the end of the file"); sys.exit(1)
+      return b
+  def u32(): return struct.unpack("<I", rd(4))[0]
+  def u64(): return struct.unpack("<Q", rd(8))[0]
   def s():
-      n = u64(); return f.read(n).decode("utf-8", "replace")
+      n = u64()
+      if n > LIMIT: print(f"string length {n} over the {LIMIT}-byte limit: corrupt header"); sys.exit(1)
+      return rd(n).decode("utf-8", "replace")
   SCALAR = {0: ("u8", "<B", 1), 1: ("i8", "<b", 1), 2: ("u16", "<H", 2), 3: ("i16", "<h", 2), 4: ("u32", "<I", 4), 5: ("i32", "<i", 4),
             6: ("f32", "<f", 4), 7: ("bool", "<?", 1), 10: ("u64", "<Q", 8), 11: ("i64", "<q", 8), 12: ("f64", "<d", 8)}
   def value(t):
       if t == 8: return "string", s()
       if t == 9:
           et, n = u32(), u64()
+          if n > LIMIT: print(f"array length {n} over the limit: corrupt header"); sys.exit(1)
           items = [value(et)[1] for _ in range(n)]
           return f"array[{n}] of {SCALAR[et][0] if et in SCALAR else 'string' if et == 8 else et}", items
+      if t not in SCALAR: print(f"unknown metadata value type {t}: corrupt header or a newer format"); sys.exit(1)
       name, fmt, size = SCALAR[t]
-      return name, struct.unpack(fmt, f.read(size))[0]
-  magic = f.read(4)
-  assert magic == b"GGUF", f"not GGUF: {magic!r}"
-  ver = u32(); n_tensors = u64(); n_kv = u64()
+      return name, struct.unpack(fmt, rd(size))[0]
+  magic = rd(4)
+  if magic != b"GGUF": print(f"not GGUF: magic {magic!r}"); sys.exit(1)
+  ver = u32()
+  if ver not in (2, 3): print(f"GGUF version {ver}: only versions 2 and 3 (little-endian) are read here; 1, or a big-endian file, would make every count below nonsense"); sys.exit(1)
+  n_tensors = u64(); n_kv = u64()
+  if n_tensors > 10_000_000 or n_kv > 1_000_000: print(f"{n_tensors} tensors, {n_kv} metadata pairs: implausible counts, corrupt header"); sys.exit(1)
   print(f"GGUF version {ver}, {n_tensors} tensors, {n_kv} metadata pairs")
   for _ in range(n_kv):
       k = s(); t = u32(); tn, v = value(t)
@@ -248,11 +284,10 @@ take an output directory, is the one exception, handled below.
       print(f"tensor\t{name}\tdims {dims}\ttype {ttype}\toffset {off}")
   ```
 
-  A tensor type **number** is read against the writer's release: numbers 16 to
-  25 changed meaning across llama.cpp releases in early 2024 before being
-  pinned, and two releases wrote different block layouts for the same `Q8_1`
-  and K-quant numbers, so quote the number with the name your reader gives it
-  and the reader's version. `strings` still surfaces the text metadata quickly.
+  A tensor type **number** is read against the writer's release: the integer
+  types in the 16 to 25 range were renumbered by a llama.cpp release in early
+  2024 before the table was pinned, so quote the number with the name your
+  reader gives it and the reader's version. `strings` still surfaces the text metadata quickly.
 - Do not load the weights "to inspect", that is running the model. Header and
   metadata answer identity and structure questions; behaviour is not inferable
   from declared architecture alone.

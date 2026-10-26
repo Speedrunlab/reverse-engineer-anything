@@ -60,8 +60,11 @@ The manifest answers a lot before any code:
   static values, so JADX prints it at the declaration and smali shows it as
   `.field ... static final ...:Ljava/lang/String; = "..."`. List the fields
   without their values, since the values can be keys:
-  `grep -rEh '^\.field .*static final [^=]*= "' <outdir>/smali*/ | sed -E 's/ = ".*$//' | sort -u > "$W/out/constants-<name>.txt"`
-  (`<outdir>` is the apktool root; count the matches first). The compiler
+  `grep -rE '^\.field .*static final [^=]*= ' <outdir>/smali*/ | sed -E 's/ = .*$//' | sort -u > "$W/out/constants-<name>.txt"`
+  (`<outdir>` is the apktool root; count the matches first). The match keeps the
+  file, so the owning class is citable and two classes' `TAG` fields stay two
+  lines, and it takes any literal (strings, numbers, booleans); `= "` narrows it
+  to strings. The compiler
   inlines a constant at every use site, so a value can appear in code with no
   field named for it: search the declaration and the literal both.
 - **Bundled native code**: `lib/<abi>/*.so` are native libraries; route each to

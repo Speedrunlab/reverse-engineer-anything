@@ -62,7 +62,7 @@ process that runs unreviewed code at install time.
 | Android extras | `bundletool`, `apksigner` | github.com/google/bundletool; Android SDK build-tools | AAB to APK; signing certificates. |
 | PE signatures | `osslsigncode` | github.com/mtrojnar/osslsigncode | Verify Authenticode against a staged CA bundle (`-ignore-cdp` offline); `extract-signature -pem` plus `openssl pkcs7` names the signer. |
 | JSON (HAR, metadata) | `jq` | jqlang.org | Query HAR files and JSON output. |
-| Firmware / packed | **binwalk**, **unblob**, `7zz`, `unsquashfs` | github.com/ReFirmLabs/binwalk, github.com/onekey-sec/unblob, 7-zip.org | Carve embedded filesystems and blobs. `7zz` is official 7-Zip; `7z` is p7zip. |
+| Firmware / packed | **binwalk**, **unblob**, `7zz`, `unsquashfs`; the skill's `entropy.py` | github.com/ReFirmLabs/binwalk, github.com/onekey-sec/unblob, 7-zip.org | Carve embedded filesystems and blobs; an entropy map per block. `7zz` is official 7-Zip; `7z` is p7zip. |
 | WebAssembly | **WABT** (`wasm2wat`, `wasm-objdump`) | github.com/WebAssembly/wabt | Text form and section inventory; `wasm-decompile` only in WABT 1.0.41 and earlier. |
 | Network captures | **Wireshark**/`tshark`, **mitmproxy** | wireshark.org, mitmproxy.org | Read saved pcap/HAR/flows; capture only in a controlled env. |
 | SQLite | `sqlite3` | sqlite.org | Open a **copy** read-only, as the firmware and archives guide shows (`-readonly -init /dev/null`, `trusted_schema=OFF`). |
@@ -83,11 +83,11 @@ process that runs unreviewed code at install time.
 | JavaScript unminifying | `wakaru` (`@wakaru/cli`) | npm (pinned, `--ignore-scripts`) | Rewrites a bundle into modules; output is not source. |
 | HarmonyOS | `ark_disasm` | OpenHarmony SDK toolchains | Disassembles `modules.abc`. |
 | React Native (Hermes) | `hermes-dec` | github.com/P1sec/hermes-dec | Disassembles and decompiles Hermes bytecode. |
-| PE tables | `llvm-readobj` (`--coff-imports`, `--coff-exports`, `--coff-tls-directory`, `--coff-load-config`); `llvm-objdump` (`--disassemble-symbols`) | LLVM releases (github.com/llvm/llvm-project); not in Apple's command-line tools | Imports, delay-loads, exports, TLS callbacks, load configuration; one function by name. |
+| PE tables | `llvm-readobj` (`--coff-imports`, `--coff-exports`, `--coff-tls-directory`, `--coff-load-config`); `llvm-objdump` (`--disassemble-symbols`) | LLVM releases (github.com/llvm/llvm-project); Apple's command-line tools ship `llvm-objdump` with four target families and no `llvm-readobj` | Imports, delay-loads, exports, TLS callbacks, load configuration; one function by name. |
 | PE in Python | `pefile` | github.com/erocarrera/pefile (pip, `--require-hashes`) | The same directories as objects; `get_imphash()`; the TLS callback array. |
 | Linux kernel modules | `kmod` (`modinfo`, `modprobe --show-modversions`); the kernel tree's `scripts/extract-module-sig.pl`; the skill's `modsig.py` | distro packages; kernel.org | `.modinfo`, symbol CRCs, the signature trailer; `readelf -p .modinfo` works on any host. |
 | Devicetrees | `dtc`, `fdtdump`, `fdtget` (device-tree-compiler); `dumpimage` (u-boot-tools) for FIT images, optional | distro packages; git.kernel.org/pub/scm/utils/dtc/dtc.git | Decompile and query `.dtb`/`.itb`; read only. |
-| Node.js single executables | `segedit` (Xcode command-line tools), `wrestool` (icoutils), the skill's `elf-note.py` | built into macOS; nongnu.org/icoutils | Extract the `NODE_SEA_BLOB` resource from a Mach-O, PE or ELF carrier. |
+| Node.js single executables | `segedit` (Xcode command-line tools), `wrestool` (icoutils), the skill's `elf-note.py` | Xcode command-line tools; nongnu.org/icoutils | Extract the `NODE_SEA_BLOB` resource (the Mach-O section is `__NODE_SEA_BLOB`) from a Mach-O, PE or ELF carrier. |
 | Protobuf and gRPC bodies | `protoc` (`--decode_raw`, `--decode`) | github.com/protocolbuffers/protobuf releases | Decode a captured message with or without its schema; nothing is fetched. |
 | GGUF and safetensors | `gguf-dump` (the `gguf` package from llama.cpp's `gguf-py`); the skill's `gguf-header.py` and `safetensors-header.py` | pip (`--require-hashes`); github.com/ggml-org/llama.cpp | Metadata and the tensor directory only; weights are never loaded. |
 | GameCube / Wii DOL | Ghidra GameCube Loader extension | github.com/Cuyler36/Ghidra-GameCube-Loader (Apache 2.0) | Loads DOL and REL, adds the Gekko/Broadway language; the skill's `dol-header.py` reads the header without it. |

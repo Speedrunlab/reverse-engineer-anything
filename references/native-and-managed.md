@@ -58,7 +58,9 @@ decompile anything:
   enforced them. An absent directory is absence of the declaration.
 - Any architecture: `readelf -h` reads the class, byte order and machine of any
   ELF on any host, but `objdump -d` disassembles only targets its build knows
-  (`binutils-multiarch`, or `llvm-objdump`, which carries every LLVM backend).
+  (`binutils-multiarch`, or an `llvm-objdump` built with the targets you need:
+  `llvm-objdump --version` lists them, and Apple's build has only AArch64, Arm,
+  WebAssembly and x86).
   A section flagged `C` in `readelf -S` is compressed (zlib, or zstd with
   binutils 2.40+) and reads with `readelf -z -p <section>` or
   `llvm-readelf --decompress -p <section>`. Record machine, class and byte order
@@ -95,9 +97,11 @@ On macOS, `readelf` and `nm -D` are not installed by default: use `llvm-readelf`
 - **What does it export or import?** The symbol and import tables above; record
   them to `$W/out/` and answer from the file.
 - **Is it signed, and by whom?** `codesign -dvvv` (Mach-O). PE, MSI, CAB and
-  APPX: `osslsigncode verify -in <file> -CAfile <bundle> -ignore-cdp > "$W/out/sig-<name>.txt"`
+  APPX: `osslsigncode verify -in <file> -CAfile <bundle> -TSA-CAfile <bundle> -ignore-cdp > "$W/out/sig-<name>.txt"`
   checks the Authenticode signature against a CA bundle the operator staged
-  (`-ignore-cdp` skips the CRL fetch the environment would block anyway). The
+  (`-ignore-cdp`, osslsigncode 2.8 or later, skips the CRL fetch the environment
+  would block anyway; a timestamped signature needs `-TSA-CAfile`, or
+  `-ignore-timestamp` to check the signer chain alone). The
   signer chain is readable offline without trusting any bundle:
   `osslsigncode extract-signature -pem -in <file> -out "$W/out/sig-<name>.pem"`,
   then `openssl pkcs7 -in "$W/out/sig-<name>.pem" -print_certs -noout -text | grep -E 'Subject:|Issuer:|Not (Before|After)'`
@@ -130,8 +134,11 @@ On macOS, `readelf` and `nm -D` are not installed by default: use `llvm-readelf`
 - **One function by name, no project:** `llvm-objdump -d --disassemble-symbols=<symbol> <bin> > "$W/out/dis-<name>-<symbol>.txt"`
   (tested; GNU binutils 2.32+ spells it `objdump -d --disassemble=<symbol>`)
   prints one function's disassembly, the cheapest seed-driven read before a
-  Ghidra project. It needs the symbol to exist; on a stripped binary give
-  `--start-address` and `--stop-address` a range from the inventory.
+  Ghidra project. Mach-O symbols carry a leading underscore (`_main`), and a
+  symbol that is not there is only a warning with exit 0 and an output file
+  holding nothing but the header, so check the file has a body (tested). On a
+  stripped binary give `--start-address=<hex>` and `--stop-address=<hex>` a range
+  from the inventory (the `=` form; the spaced form is rejected).
 - Work from a seed: an exported symbol, a string's cross-reference, an import
   call site. Follow it outward only as far as the question needs.
 
@@ -149,7 +156,8 @@ Ghidra's own loader; a headerless `.com` is a raw 16-bit image loaded at `0x100`
 
 **Peripheral registers.** In microcontroller firmware an absolute address in the
 peripheral range (Cortex-M: `0x40000000` to `0x5FFFFFFF`, and the private
-peripheral bus at `0xE000E000`) is a register access. Name them with the chip's
+peripheral bus `0xE0000000` to `0xE00FFFFF`, whose System Control Space starts
+at `0xE000E000`) is a register access. Name them with the chip's
 CMSIS-SVD file (the vendor's, or the `cmsis-svd-data` collection) through
 SVD-Loader-Ghidra (`SVD-Loader.py`, run from the Script Manager), which creates
 the peripheral memory blocks and labels so the decompiler shows the register
@@ -177,8 +185,9 @@ finding that rests on it.
   ILSpy opens it.
 - **Who calls a method, who reads a field?** Dump the IL to one named file
   (`ilspycmd -il <assembly> > "$W/out/il-<name>.il"`) and grep it for the
-  member's full name after `call`, `callvirt`, `newobj`, `ldfld`, `stfld`,
-  `ldsfld` and `stsfld`: each hit is a static edge at an IL offset inside a
+  member's full name after `call`, `callvirt`, `newobj`, `ldftn`, `ldvirtftn`
+  (a method taken as a delegate), `ldfld`, `stfld`, `ldsfld`, `stsfld`, `ldflda`
+  and `ldsflda`: each hit is a static edge at an IL offset inside a
   named method, not a call that ran. A **ReadyToRun** image keeps that IL
   beside precompiled native code, so ILSpy reads it like any assembly; the
   native code is a start-up cache, never the only copy of the logic (unlike
@@ -388,15 +397,22 @@ section 1) apply in full.
   `bug_type` `"309"` is a crash; other types (`"288"` is a stackshot) are not
   and have no crash body. The body (tested on a system report):
   `tail -n +2 <f> | jq '{procName, procPath, exception, termination, faultingThread, threads: (.threads | length), usedImages: (.usedImages | length)}'`
-  gives the process, the exception (`type`, `signal`, `codes`), the termination
+  gives the process, the exception (`type`, `codes`, and `signal` when the report
+  has one), the termination
   (`namespace`, `indicator`, `code`, `flags`) and the faulting thread's index;
   `tail -n +2 <f> | jq -c '.threads[.faultingThread].frames[] | [.imageIndex, .imageOffset, .symbol]'`
   lists that thread's frames. A frame's address is
   `usedImages[imageIndex].base + imageOffset`, and `usedImages[]` carries each
-  image's `base`, `size`, `uuid`, `arch`, `name` and `path`. Symbolicate
+  image's `base`, `size`, `uuid`, `arch`, `name` and `path` (one placeholder entry
+  with `source` `"A"` and no name or path is normal; no frame points at it). Symbolicate
   offline with the binary or dSYM whose `dwarfdump --uuid` matches the image's
   `uuid`: `atos -o <binary or dSYM DWARF> -arch <arch> -l <base> <address>`
-  (tested). Symbol names printed inside the report are recorded claims, not
+  (tested). `atos` reads `-l` and the addresses as hex with or without `0x`,
+  and the report's `base` and `imageOffset` are decimal: convert first
+  (`printf '0x%x' <decimal>`), or a decimal value is read as a different address
+  and names the wrong symbol (tested). An older text `.crash` report carries the
+  same frames and image list; an address inside an ELF binary symbolicates with
+  `llvm-symbolizer --obj=<bin> <address>` rather than `atos`. Symbol names printed inside the report are recorded claims, not
   verified; `asi` ("Application Specific Information"), `procLaunch` and every
   path are sample text (`cut -c1-200 | cat -v`), and paths carry user names:
   personal data to count.
@@ -412,9 +428,11 @@ in an APK). The two files together are one target set (SKILL.md section 0).
 
 - The metadata file starts with the magic `AF 1B B1 FA`, then its version as a
   32-bit integer at offset 4 (`od -An -t u4 -j 4 -N 4 global-metadata.dat`,
-  tested on a fixture): 24 is a 2018.3 to 2020.1 build, 27 is 2020.2 to
-  2021.1, 29 is 2021.2 to mid 2022.3, 31 is later 2022.3 and Unity 6. The
-  number picks the tool release to use and dates the build; a file without the
+  tested on a fixture): 24 and its 24.x points are 2017.1 to 2020.1 builds, 27
+  is 2020.2 to 2021.1, 29 is 2021.2 to 2022.3.32, 31 is 2022.3.33 to Unity 6.2,
+  and 35 and up are Unity 6.3 onward (the Il2CppInspector version table maps
+  each point release). The number picks the tool release to use and dates the
+  build; a file without the
   magic is encrypted, obfuscated or not metadata at all.
 - **Il2CppDumper** (open source, .NET) parses both in memory and runs nothing:
   `Il2CppDumper <code binary> <global-metadata.dat> "$W/out/il2cpp-<name>"` (on
@@ -528,8 +546,9 @@ Read, never `insmod`: a module is kernel code.
   `signer`, `sig_key` and `sig_hashalgo` when the file is signed, and
   `modinfo -F <field> <ko>` one of them; both take a file path and never load
   the module.
-- **Symbol versions:** `readelf -S <ko> | grep -E '__versions|__ksymtab|\.gnu\.linkonce\.this_module'`
-  shows which tables exist; `__versions` is 64-byte records (a CRC, then the
+- **Symbol versions:** `readelf -SW <ko> | grep -E '__versions|__ksymtab|\.gnu\.linkonce\.this_module'`
+  shows which tables exist (`-W` keeps long names whole; GNU `readelf` otherwise
+  cuts them to 17 characters); `__versions` is 64-byte records (a CRC, then the
   symbol name) that `readelf -x __versions <ko>` dumps and, on Linux,
   `modprobe --show-modversions <ko>` lists one per line. The CRCs must match
   the target kernel's: a mismatch is a "built for another kernel" finding, not
@@ -548,27 +567,35 @@ Read, never `insmod`: a module is kernel code.
   data = open(sys.argv[1], "rb").read()
   if not data.endswith(MAGIC):
       print("no signature trailer (not proof the module is unsigned elsewhere)"); sys.exit(1)
+  if len(data) < len(MAGIC) + 12:
+      print("trailer magic present but the file is shorter than the 12-byte descriptor: truncated or not a module"); sys.exit(1)
   algo, hsh, id_type, signer_len, key_id_len, sig_len = struct.unpack(">BBBBB3xI", data[-len(MAGIC)-12:-len(MAGIC)])
   body_end = len(data) - len(MAGIC) - 12 - sig_len
+  if sig_len == 0 or body_end < 0:
+      print(f"descriptor says sig_len {sig_len} but only {len(data) - len(MAGIC) - 12} bytes precede it: corrupt trailer, nothing written"); sys.exit(1)
   print(f"algo {algo} hash {hsh} id_type {id_type} ({'PKCS#7' if id_type == 2 else 'other'}) signer_len {signer_len} key_id_len {key_id_len} sig_len {sig_len}; signed module bytes 0..{body_end}")
   if len(sys.argv) > 2 and id_type == 2:
       open(sys.argv[2], "wb").write(data[body_end:body_end + sig_len]); print("PKCS#7 written to", sys.argv[2])
   ```
 
   Run it as `"$W/scripts/run.sh" python3 -I "$W/scripts/modsig.py" <ko> "$W/out/sig-<name>.p7s"`,
-  then `openssl pkcs7 -inform der -in "$W/out/sig-<name>.p7s" -print_certs -noout -text | grep -E 'Subject:|Issuer:'`
-  names the signer. The kernel tree's own `scripts/extract-module-sig.pl -s <ko>`
+  then `openssl pkcs7 -inform der -in "$W/out/sig-<name>.p7s" -noout -print | grep -E 'issuer:|serial:'`
+  names the signer by issuer and serial number: the kernel's `sign-file` writes
+  a detached CMS signature with no certificate inside, so `-print_certs` prints
+  nothing for a real module (tested on both forms, OpenSSL 3 and LibreSSL). The kernel tree's own `scripts/extract-module-sig.pl -s <ko>`
   does the same (`-d` prints the descriptor, `-0` writes the unsigned module).
   The signature is checked only by a kernel holding the signing key: here it is
   "present, signer X", never "valid". No trailer is absence of a trailer, not
   proof the module is unsigned in another package.
 - **Compressed modules** (`.ko.xz`, `.ko.zst`, `.ko.gz`, as distributions ship
-  them): decompress to a new file in `out/` first (`xz -dk`, `zstd -d -o`,
-  `gunzip -k`), hash both, and read the decompressed one; `modinfo` reads a
+  them): decompress to a new file in `out/` first (`xz -dc -- <f> > "$W/out/<name>.ko"`,
+  `gunzip -c <f> > "$W/out/<name>.ko"`, `zstd -d <f> -o "$W/out/<name>.ko"`; `xz -dk`
+  and `gunzip -k` write beside the input, which is read-only here), hash both,
+  and read the decompressed one; `modinfo` reads a
   compressed module itself when its kmod was built with that codec.
-- `.init.text`, `.exit.text` and the `__ksymtab*` tables (what it exports to
-  other modules) are where the logic is: route the file to the native sections
-  above for it.
+- `.text`, `.init.text` and `.exit.text` hold the code, and the `__ksymtab*`
+  tables are data naming what it exports to other modules: route the file to
+  the native sections above for the code.
 
 ## GameCube and Wii DOL
 
@@ -577,7 +604,9 @@ up to 7 text and 11 data sections (file offset, load address, size, all
 big-endian), one BSS range and the entry point, then the sections' bytes. It has
 no magic: identify it by a header that makes sense (offsets inside the file,
 load addresses inside the console's main memory, `0x80000000` to `0x81800000`,
-the entry inside a text section), never by the extension alone. Read the header
+the entry inside a text section), never by the extension alone. `file` has no
+DOL entry and, for the usual layout whose first section starts at 0x100, prints
+"Apple HFS/HFS+ resource fork" (tested): on a `.dol` that label is noise. Read the header
 with this helper, saved and locked as `$W/scripts/dol-header.py` (tested on a
 fixture):
 
@@ -585,6 +614,8 @@ fixture):
 # dol-header.py <file.dol>: the 256-byte DOL header: 7 text + 11 data sections (file offset, load address, size), bss, entry
 import struct, sys
 h = open(sys.argv[1], "rb").read(0x100)
+if len(h) < 0x100:
+    print(f"{len(h)} bytes: shorter than the 256-byte DOL header, not a DOL"); sys.exit(1)
 off = struct.unpack(">18I", h[0x00:0x48]); addr = struct.unpack(">18I", h[0x48:0x90]); size = struct.unpack(">18I", h[0x90:0xD8])
 bss_addr, bss_size, entry = struct.unpack(">3I", h[0xD8:0xE4])
 for i in range(18):

@@ -4,7 +4,7 @@ description: "Reverse Engineer Anything: analyse shipped software you cannot rea
 license: MIT
 compatibility: Any agent with a terminal/shell tool and file read/write. Needs an operator-supplied analysis environment with no network and no credentials (a disposable VM for live work), the open-source tools in references/toolchain.md installed there, a working directory outside synced folders, and an approver independent of the requester.
 metadata:
-  version: 1.15.0
+  version: 1.16.0
   author: Speedrun AI Labs
   tags: reverse-engineering, binary-analysis, security-research, interoperability
 ---
@@ -399,8 +399,8 @@ Do not infer the format from the file extension. Read the bytes.
   Linux kernel module is a relocatable ELF (`readelf -h` says `REL`) with a
   `.modinfo` section; a GameCube or Wii DOL has no magic at all and is known by
   its header's section table (native guide); a flattened devicetree does start
-  with `d0 0d fe ed`. `file` names the carrier for the first three, not the
-  target.
+  with `d0 0d fe ed`. `file` names the carrier for the first two, not the
+  target, and labels the usual DOL layout an "Apple HFS/HFS+ resource fork".
 - For a container you suspect holds more (an installer, a firmware image, a
   packed executable), note it and take its section 3 row, which names the
   unpacker (section 5), rather than guessing.
@@ -448,12 +448,12 @@ as section 4 item 7 says, whether or not the guide shows the redirect.
 | Java / JVM (`.jar`, `.war`, `.class`) | `unzip -l`, `javap -c -p`, CFR or Vineflower; `jarsigner -verify` | [native and managed](references/native-and-managed.md#java-and-jvm) |
 | Apple app bundle (`.app`, iOS `.ipa`) / `.pkg` / `.dmg` | `plutil`, `codesign -d --entitlements`, `otool -ov`, `assetutil`, `lipo`, `pkgutil`; `7zz` for DMG and IPA | [native and managed](references/native-and-managed.md#macos-bundles) |
 | Windows installer (MSI / Inno / NSIS) | `msiinfo`/`msiextract`, `innoextract`, `7zz` | [firmware and archives](references/firmware-and-archives.md#installers-and-os-packages) |
-| Packed Python exe (PyInstaller: `MEIPASS`/`python3NN.dll` in strings) or loose `.pyc` | `pyi-archive_viewer -l`, pyinstxtractor, `pycdas`/`pycdc` | [firmware and archives](references/firmware-and-archives.md#installers-and-os-packages) |
+| Packed Python exe (PyInstaller: `MEIPASS`/`python3NN.dll` in strings) or loose `.pyc` | `pyi-archive_viewer -l`, pyinstxtractor, `pyc-header.py`, `pycdas`/`pycdc` | [firmware and archives](references/firmware-and-archives.md#installers-and-os-packages) |
 | AppImage (an ELF with a squashfs appended; `file` reports only ELF) | `readelf -h` for the offset, `unsquashfs -o`, `7zz` | [firmware and archives](references/firmware-and-archives.md#installers-and-os-packages) |
 | Linux package (`.deb`, `.rpm`) | `dpkg-deb -c/-x/-e`, `rpm -qp --scripts`, `bsdtar` | [firmware and archives](references/firmware-and-archives.md#installers-and-os-packages) |
 | Godot game (`.pck`, or a pack appended to the executable) | `gdre_tools --headless --list-files` / `--extract` | [firmware and archives](references/firmware-and-archives.md#installers-and-os-packages) |
 | HarmonyOS package (`.hap`, `.hsp`, `.app` pack) | `7zz`, `module.json`, `ark_disasm` | [firmware and archives](references/firmware-and-archives.md#installers-and-os-packages) |
-| Firmware image / packed archive | `binwalk`, `unblob`, `7zz`, `unsquashfs` | [firmware and archives](references/firmware-and-archives.md) |
+| Firmware image / packed archive | `binwalk`, `unblob`, `7zz`, `unsquashfs`, `entropy.py` | [firmware and archives](references/firmware-and-archives.md) |
 | Flattened devicetree (`.dtb`, a FIT `.itb`; magic `d00dfeed`) | `fdtdump`, `dtc -I dtb -O dts`, `fdtget` | [firmware and archives](references/firmware-and-archives.md#flattened-devicetrees) |
 | Crash / core dump (ELF core, minidump, Apple `.ips`; read statically) | `readelf -n`, `eu-stack --core`, `gdb -nx -iex "set auto-load off" --batch -c`; `minidump_stackwalk`; `jq` + `atos` for `.ips` | [native and managed](references/native-and-managed.md#crash-and-core-dumps) |
 | Linux kernel module (`.ko`, also `.ko.xz`/`.zst`/`.gz`) | `readelf -p .modinfo`, `modinfo` (Linux), `modsig.py` for the signature trailer | [native and managed](references/native-and-managed.md#linux-kernel-modules) |
