@@ -147,7 +147,7 @@ take an output directory, is the one exception, handled below.
   magic, flags = h[:4], struct.unpack("<I", h[4:8])[0]
   m = struct.unpack("<H", magic[:2])[0]
   if m >= 5000:
-      print(f"magic {m}: outside CPython 3's range (Python 1.3 to 2.7 run from 5892 to 62211 with an 8-byte header), not the 16-byte 3.7+ layout"); sys.exit(1)
+      print(f"magic {m}: outside CPython 3's range (Python 1.3 to 2.7 run from 5892 to 62211, or 62212 under -U, with an 8-byte header), not the 16-byte 3.7+ layout"); sys.exit(1)
   if m < 3392:
       print(f"magic {m}: a pyc older than CPython 3.7a4 (8- or 12-byte header, no flags), not the 16-byte 3.7+ layout"); sys.exit(1)
   print("magic", magic[:2].hex(), "(little-endian", m, ") trailer", magic[2:].hex())
@@ -218,7 +218,9 @@ take an output directory, is the one exception, handled below.
   string map), then the weights. Read the header with this helper, saved and
   locked as `$W/scripts/safetensors-header.py` (tested on a fixture; a header
   length over the format's 100 MB cap, or longer than the file, stops it before
-  anything is read):
+  anything is read; in this helper and the GGUF one a backslash in a name, dtype,
+  key or value prints doubled and a control character as its escape, so a real
+  newline and a literal `\n` print differently):
 
   ```python
   # safetensors-header.py <file>: print the JSON header (tensor names, dtypes, shapes, __metadata__); the weights are never read
@@ -227,7 +229,7 @@ take an output directory, is the one exception, handled below.
   LIMIT = 100_000_000  # the format's own header cap
   def show(s, n=120):  # control characters escaped, a cut marked with length and digest, so a hostile name cannot forge or hide a row
       s = str(s); t = "".join(c if c.isprintable() and c != "\\" else repr(c)[1:-1] for c in s[:n])
-      return t + (f"...({len(s)} chars, sha256 {hashlib.sha256(s.encode('utf-8', 'surrogatepass')).hexdigest()[:8]})" if len(s) > n else "")
+      return t + (f"...({len(s)} chars, sha256 {hashlib.sha256(s.encode('utf-8', 'surrogatepass')).hexdigest()[:16]})" if len(s) > n else "")
   with open(sys.argv[1], "rb") as f:
       raw = f.read(8)
       if len(raw) < 8: print("shorter than the 8-byte length field: not a safetensors file"); sys.exit(1)
@@ -248,8 +250,8 @@ take an output directory, is the one exception, handled below.
       o = t.get("data_offsets") if isinstance(t, dict) else None
       return isinstance(t, dict) and isinstance(t.get("dtype"), str) and t["dtype"] and isinstance(t.get("shape"), list) and all(type(x) is int and x >= 0 for x in t["shape"]) and isinstance(o, list) and len(o) == 2 and all(type(x) is int for x in o) and 0 <= o[0] <= o[1]
   bad = [k for k, t in hdr.items() if not ok(t)]
-  if bad: print(f"{len(bad)} entries lack a non-empty string dtype, a shape list of whole numbers or an ascending two-integer data_offsets (first: {bad[0][:60]!r}): not a safetensors header"); sys.exit(1)
-  print(f"header {n} bytes, {len(hdr)} tensors, metadata keys: {', '.join(sorted(show(k) for k in meta)) if meta else 'none'}")
+  if bad: print(f"{len(bad)} entries lack a non-empty string dtype, a shape list of whole numbers or an ascending two-integer data_offsets (first: {show(bad[0], 60)}): not a safetensors header"); sys.exit(1)
+  print(f"header {n} bytes, {len(hdr)} tensors, metadata keys: {chr(9).join(sorted(show(k) for k in meta)) if meta else 'none'}")
   for name, t in sorted(hdr.items()):
       print(f"{show(name)}\t{show(t['dtype'], 40)}\t{show(t['shape'], 200)}\tbytes {t['data_offsets'][1]-t['data_offsets'][0]}")
   ```
@@ -271,7 +273,7 @@ take an output directory, is the one exception, handled below.
   LIMIT = 100_000_000  # longest string or array accepted; a header field beyond it is corrupt or hostile
   def show(s, n=120):  # control characters escaped, a cut marked with length and digest, so a hostile name cannot forge or hide a row
       s = str(s); t = "".join(c if c.isprintable() and c != "\\" else repr(c)[1:-1] for c in s[:n])
-      return t + (f"...({len(s)} chars, sha256 {hashlib.sha256(s.encode('utf-8', 'surrogatepass')).hexdigest()[:8]})" if len(s) > n else "")
+      return t + (f"...({len(s)} chars, sha256 {hashlib.sha256(s.encode('utf-8', 'surrogatepass')).hexdigest()[:16]})" if len(s) > n else "")
   f = open(sys.argv[1], "rb")
   def rd(n):
       b = f.read(n)
@@ -305,7 +307,7 @@ take an output directory, is the one exception, handled below.
   print(f"GGUF version {ver}, {n_tensors} tensors, {n_kv} metadata pairs")
   for _ in range(n_kv):
       k = s(); t = u32(); tn, v = value(t)
-      if isinstance(v, list): shown = f"{len(v)} items, first {show(v[:3], 80)}"
+      if isinstance(v, list): shown = f"{len(v)} items, first " + "\t".join(show(x, 40) for x in v[:3])
       else: shown = show(v)
       print(f"{show(k)}\t{tn}\t{shown}")
   for _ in range(n_tensors):

@@ -593,20 +593,29 @@ Read, never `insmod`: a module is kernel code.
   ```
 
   Run it as `"$W/scripts/run.sh" python3 -I "$W/scripts/modsig.py" <ko> "$W/out/sig-<name>.p7s"`,
-  then `"$W/scripts/run.sh" bash -c 'set -o pipefail; openssl cms -cmsout -inform der -in "$1" -noout -print | sed -n "/^ *signerInfos:/,/^ *digestAlgorithm:/p" | cat -v' _ "$W/out/sig-<name>.p7s"`
+  then `"$W/scripts/run.sh" bash -c 'set -o pipefail; openssl cms -cmsout -inform der -in "$1" -noout -print | sed -n "/^ *signerInfos:/,/^ *digestAlgorithm:/p" | LC_ALL=C cat -v' _ "$W/out/sig-<name>.p7s"`
   names the signer by issuer and serial number, or by key identifier when the
   module was signed with `sign-file -k` (the identifier prints as hex rows of 15
   bytes, so a `grep -A1` had shown 15 of its 20; the range shows the first signer,
-  and `sign-file` writes exactly one, so for a CMS with more send `-print` to
-  `$W/out/cms-<name>.txt` and read it with counts and targeted searches; the
-  anchored `^ *` keeps an issuer name that contains the words from ending the range
-  early, and `cat -v` shows the bytes OpenSSL 3 passes raw, such as a right-to-left
-  override; `pipefail` keeps `openssl`'s failure as the exit status, where a bare pipe
-  logged `sed`'s 0 for an unreadable file): the kernel's `sign-file` writes a
-  detached CMS signature with no certificate inside, so `openssl pkcs7 -print_certs`
-  prints nothing for a real module, and `openssl pkcs7` cannot load the
-  key-identifier form at all (tested on both signature forms, a two-signer CMS, a
-  hostile issuer and unreadable files, OpenSSL 3 and LibreSSL). The kernel tree's own `scripts/extract-module-sig.pl -s <ko>`
+  and `sign-file` writes exactly one, so for a CMS with more save the whole print,
+  `"$W/scripts/run.sh" bash -c 'openssl cms -cmsout -inform der -in "$1" -noout -print > "$2"' _ "$W/out/sig-<name>.p7s" "$W/out/cms-<name>.txt"`,
+  and read it with counts and targeted searches through `LC_ALL=C cat -v`; the
+  anchored `^ *` keeps a
+  one-line issuer name that contains the words from ending the range early, and
+  `LC_ALL=C cat -v` shows every byte OpenSSL 3.2 and later pass raw, such as a
+  right-to-left override (3.0, 3.1 and LibreSSL escape them); the output's shape
+  is evidence too: two `signerInfos:` lines, or no `serialNumber:` or hex row
+  before `digestAlgorithm:`, is a forged or cut CMS (a string field inside it can
+  carry fake print lines, which LibreSSL prints with their newlines), so report
+  the shape and read no signer from it, and an empty result with exit 0 is a CMS
+  with no `signerInfos`, not a signer; `pipefail` keeps `openssl`'s failure as the
+  exit status, where a bare pipe logged `sed`'s 0 for an unreadable file): the
+  kernel's `sign-file` writes a detached CMS signature with no certificate inside,
+  so `openssl pkcs7 -print_certs` prints nothing for a real module, and
+  `openssl pkcs7` cannot load the key-identifier form at all (tested on both
+  signature forms, a two-signer CMS, hostile issuers, a forged string field, an
+  enveloped CMS and unreadable files, OpenSSL 3.6 and LibreSSL 3.3; 3.0 to 3.5
+  read from source). The kernel tree's own `scripts/extract-module-sig.pl -s <ko>`
   does the same (`-d` prints the descriptor, `-0` writes the unsigned module).
   The signature is checked only by a kernel holding the signing key: here it is
   "present, signer X", never "valid". No trailer is absence of a trailer, not

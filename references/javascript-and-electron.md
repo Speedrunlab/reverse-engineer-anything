@@ -96,7 +96,7 @@ that blob instead of reading a script. Nothing about it is Electron.
           p, stop = off, min(off + size, len(d))
           while p + 12 <= stop:
               namesz, descsz, ntype = struct.unpack(end + "III", d[p:p+12]); p += 12
-              if p + namesz > stop: cut = True; break  # this segment is corrupt or cut; the others are still searched
+              if p + namesz > stop: cut = True; print(f"notes at offset {off}: an owner runs past the end of the segment or file; the rest of them skipped"); break
               name = d[p:p+namesz].rstrip(b"\0"); p += (namesz + 3) & ~3
               desc = d[p:min(p+descsz, stop)]; p += (descsz + 3) & ~3
               shown += 1

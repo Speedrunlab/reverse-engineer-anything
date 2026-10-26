@@ -2,6 +2,50 @@
 
 Reverse Engineer Anything. Newest first.
 
+## v1.21.0 (26 Oct 2026)
+
+Hardening round 19, on v1.20.0's own changes only: two fresh readers, proven
+findings only. No high. The fixes:
+
+- Kernel modules: the signer passage says what its range proves and what it
+  does not. The anchor stops a one-line issuer name from ending the range; a
+  string field inside the CMS can still carry fake print lines, and LibreSSL
+  prints them with their newlines, so the output's shape is read as evidence
+  (two `signerInfos:` lines, or no `serialNumber:` or hex row before
+  `digestAlgorithm:`, is a forged or cut CMS; an empty result with exit 0 is
+  a CMS with no `signerInfos`). `cat -v` runs under `LC_ALL=C`, since BSD
+  `cat -v` in a UTF-8 locale marks only 0x80 to 0x9f; "OpenSSL 3" became
+  "OpenSSL 3.2 and later", because 3.0 and 3.1 printed names with the compat
+  flags that escape control bytes. The whole-print save has its command.
+- Protobuf and gRPC: the next-frame command reads the length itself
+  (`tail -c +$((6 + 0x$(xxd ...)))`), because every command runs in a fresh
+  shell where the cut's `len` is unset and `6 + len` was 6, which put the next
+  frame one message too early on every multi-frame body; the schema decode
+  writes `-schema.txt`, so it no longer overwrites the raw decode; a `tshark`
+  line's decode file is named.
+- Helpers: `safetensors-header.py` joins metadata keys with a tab, which
+  `show()` never lets through (v1.20.0's comma join could not tell two keys
+  from one key holding a comma), and shows a bad entry's name through `show()`
+  (a 61-character name had been cut with no marker); `gguf-header.py` shows
+  the first array items through `show()` one by one instead of a list repr
+  (items had been escaped twice); the cut marker's digest is 16 hex characters
+  (8 could be ground to a collision in under a second); `pyc-header.py`'s
+  message names 62212 for 2.7 under `-U`, as the prose does; `elf-note.py`
+  prints one line naming a segment it skips for a cut owner, as `llvm-readelf`
+  warns (it had skipped silently); the text says a backslash prints doubled.
+
+Tested here: the signer line on a CMS whose string field carries fake print
+lines (LibreSSL shows two `signerInfos:` blocks, OpenSSL 3.6 escapes the
+newlines), on an enveloped CMS, on both signature forms, a two-signer CMS,
+hostile issuers and unreadable files (both builds); `LC_ALL=C cat -v` against
+the UTF-8 locale on a right-to-left override and a byte-order mark; the
+next-frame command in a fresh shell on one-, two- and three-frame bodies; the
+two metadata-key fixtures and the forged key; a ground digest collision at 8
+characters; the skipped-segment line on a cut decoy; the helpers on every
+earlier fixture. Doc-checked, not run: OpenSSL 3.0 to 3.5 name flags
+(`apps/lib/apps.c` and the 3.4.2 change note), `protoc`. Round 20 on this
+version's own changes has not run.
+
 ## v1.20.0 (26 Oct 2026)
 
 Hardening round 18, on v1.19.0's own changes only: two fresh readers, proven
@@ -34,8 +78,8 @@ findings only. No high. The fixes:
   not told them apart); metadata keys print through it rather than a list repr,
   and a non-string metadata value is reported by its key; `gguf-header.py` gets
   the same stdout guard as its sibling (a non-UTF-8 locale and a non-Latin key
-  gave a traceback); `modsig.py`'s no-module message drops "but only" for the
-  equal case.
+  gave a traceback); `modsig.py`'s no-module message says "and" in place of
+  "but only".
 - CHANGELOG: the v1.19.0 entry had the Python 1.3 and 1.4 magics in the wrong
   order (1.3 is 11913, 1.4 is 5892); the prose notes 2.7's `-U` magic 62212.
 
@@ -47,8 +91,10 @@ short, empty, 4-byte, zero-length-frame and multi-frame bodies; the script
 loop's text branch on an entry without `text`; `show()` on a real newline
 against a literal `\n` and on two 121-character names sharing a prefix;
 `gguf-header.py` on a Hebrew key under a Latin-1 locale and with stdout closed;
-the helpers on every earlier fixture. Round 19 on this version's own changes
-has not run.
+the helpers on every earlier fixture. Doc-checked, not run: the Python 1.3, 1.4
+and 2.7 `-U` magics (`Python/import.c`), `SeaSerializer::Write` at the six tags.
+Round 19 on this version's own changes ran the same day; its findings are
+v1.21.0.
 
 ## v1.19.0 (26 Oct 2026)
 

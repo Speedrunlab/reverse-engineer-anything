@@ -121,17 +121,19 @@ A saved capture is just a file. Read it; do not replay or fetch from it.
   cut short of its declared length, which would otherwise read as an empty or a
   short message; `tail -c +6` alone is right only for a single-frame body, and the
   branch is there because `head -c 0` is an error on macOS), decompress it if
-  flagged, and take the rest with `tail -c +$((6 + len)) <body> > <rest>` for the
-  next frame (`tail` counts from 1, so `5 + len` starts one byte early; tested).
+  flagged, and take the rest with `tail -c +$((6 + 0x$(xxd -p -s 1 -l 4 <body>))) <body> > <rest>`
+  for the next frame (it reads the length again because each command runs in a
+  fresh shell, where `len` is unset and `6 + len` would be 6; `tail` counts from 1,
+  so `5 +` the length starts one byte early; tested).
   Decode an unframed message without a schema (`<msg>` from the cut, a `tshark`
   line's file, or the whole body when the content type is `application/x-protobuf`,
   which has no frame) with `protoc --decode_raw < <msg> > "$W/out/decode-<name>-<i>-<k>.txt"`,
-  one file per frame, `<k>` counting from 1 (a `tshark` line's file takes its `<n>`,
-  an unframed body 1):
+  one file per frame, `<k>` counting from 1 (a `tshark` line's file is
+  `decode-<name>-<n>.txt`, an unframed body takes `<k>` 1):
   it prints field numbers and raw values, and a length-delimited field may be a
   string, bytes, a nested message or packed numbers, so names and types stay
   inferences until the operator supplies the `.proto`
-  (`protoc --proto_path=<dir> --decode=<pkg.Message> <file>.proto < <msg> > "$W/out/decode-<name>-<i>-<k>.txt"`;
+  (`protoc --proto_path=<dir> --decode=<pkg.Message> <file>.proto < <msg> > "$W/out/decode-<name>-<i>-<k>-schema.txt"`;
   the schema is theirs, never fetched). gRPC-web's last frame (flag bit `0x80`)
   is the trailer block, `grpc-status` and `grpc-message` as header text.
 - **Saved mitmproxy flows**: `mitmdump -n -r <flows> > "$W/out/flows-<name>.txt"`,
