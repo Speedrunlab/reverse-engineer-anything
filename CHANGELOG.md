@@ -2,12 +2,66 @@
 
 Reverse Engineer Anything. Newest first.
 
+## v1.19.0 (26 Oct 2026)
+
+Hardening round 17, on v1.18.0's own changes only: two fresh readers, proven
+findings only. No high. The fixes:
+
+- Node.js single executables: the `execArgv` extension byte was backported to
+  the 22 line at 22.20.0, so a 22.20+ blob carries the 9-byte header too
+  (v1.18.0 said "nothing before 24.7"; `node_sea.h` read at 22.19.0 and
+  22.20.0); the text names `SeaSerializer::Write` in `node_sea.cc` for the
+  byte order, since the header file gives only the size.
+- `.ips`: the `llvm-symbolizer` address is the first `LOAD` address plus the
+  offset in every case (0 for most shared objects and PIEs); the runtime
+  `base + imageOffset` names nothing only for a PIE or shared object and equals
+  link base plus offset for a non-PIE executable (v1.18.0's "names nothing" was
+  too broad, and "linked at 0" is not every ET_DYN).
+- Kernel modules: the signer line runs under `run.sh` with `pipefail`, so an
+  unreadable file fails instead of logging `[exit 0]` from `sed` (garbage,
+  truncated and missing files all logged success); the range shows the first
+  signer (`sign-file` writes one).
+- Protobuf and gRPC: the two older `.text` saves end in `// empty` too (an
+  entry with `encoding` but no `text` wrote `null`); the frame cut first checks
+  the body is at least a frame head (a shorter body read as an empty message,
+  exit 0); one decode file per frame; the recorder sentence names Playwright
+  and DevTools, and when DevTools writes `encoding`.
+- Helpers: `pyc-header.py` refuses every magic from 5000 up (Python 1.3 and 1.4,
+  5892 and 11913, had read as 3.7+, and "1.5 to 2.7" was not the whole band)
+  and points a headerless marshal dump at the prepend step; `safetensors-header.py`
+  and `gguf-header.py` print control characters in names, dtypes, keys and
+  string values escaped and mark a cut name with `...` (a newline in a name had
+  forged a second row, and two names cut to 120 printed the same);
+  `safetensors-header.py` requires a non-empty dtype and string metadata values,
+  as the reference reader does, and survives a closed stdout; `elf-note.py` says
+  "truncated" when a note's owner runs past its segment (it had said "no note
+  with that owner"); `modsig.py`'s no-module message reads right when `sig_len`
+  equals the bytes before it.
+
+Tested here: `llvm-symbolizer` on ET_DYN files linked at 0 and at 0x10000 and
+on an ET_EXEC, with offsets, link base plus offset and runtime addresses; the
+wrapped signer line on both signature forms, a two-signer CMS, garbage and a
+truncated file (both OpenSSL builds, exit codes read from `commands.log`); the
+guarded cut on empty, 4-byte, one-, two- and zero-length-frame bodies in bash
+and zsh; the `// empty` saves on entries with and without `text`; the helpers
+on the good fixtures, every earlier edge case and the new ones (magics 5892,
+11913, 20120 and 3627, a headerless marshal dump, names with newlines, tabs and
+escape bytes, names of 120 and 121 characters, an empty dtype, a non-string
+metadata value, a closed stdout, a note owner cut by its segment, a `sig_len`
+equal to the bytes before it). Doc-checked, not run: `node_sea.h` at 22.19.0
+and 22.20.0 and `SeaSerializer::Write` at 25.7.0, DevTools' HAR writer and the
+CDP `base64Encoded` flag (a reviewer's loopback probe against Chrome). Round 18
+on this version's own changes has not run.
+
+Correction to the v1.18.0 note: its first bullet said "header tail" for the
+whole 8-, 9- or 10-byte header; the tail is the 0, 1 or 2 bytes after the flags.
+
 ## v1.18.0 (26 Oct 2026)
 
 Hardening round 16, on v1.17.0's own changes only: two fresh readers, proven
 findings only. The fixes:
 
-- Node.js single executables: the header tail is 8 bytes before Node 24.7, 9
+- Node.js single executables: the header is 8 bytes before Node 24.7, 9
   from 24.7 to 25.6 and 10 from 25.7 on (`node_sea.h` read at 24.6.0, 24.7.0,
   25.6.1 and 25.7.0); v1.17.0's "later Node 24" and "Node 25" were wrong at
   both boundaries, and only a 25.5.0 blob had been checked. The string lengths
@@ -60,7 +114,8 @@ fixtures, the earlier edge cases and the new ones (a 100,000-deep shape, a lone
 surrogate, UTF-16 and BOM headers, a 10-byte pyc prefix, four- and five-level
 GGUF arrays, a `sig_len` equal to the module, a note straddling its segment).
 Doc-checked, not run: `node_sea.h` at the four tags, `protoc --decode_raw`
-(absent here). Round 17 on this version's own changes has not run.
+(absent here). Round 17 on this version's own changes ran the same day; its
+findings are v1.19.0.
 
 ## v1.17.0 (26 Oct 2026)
 

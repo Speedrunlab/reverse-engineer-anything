@@ -131,8 +131,9 @@ take an output directory, is the one exception, handled below.
   the file is hash-based (PEP 552) or carries the source's mtime and size; a
   file whose bytes 2 and 3 are not `0d 0a`, whose magic is below 3392 (the 3.7a4
   value that brought this header; earlier 3.x files carry 8 or 12 bytes) or whose
-  magic is 20121 or more (Python 1.5 to 2.7, 8 bytes; 2.7 is 62211) is not this
-  layout, and the helper says so. The magic names
+  magic is 5000 or more (Python 1.3 to 2.7 run from 5892 to 62211 with an 8-byte
+  header; Python 3 magics have not reached 4000) is not this layout, and the helper
+  says so. The magic names
   the format, not the interpreter that ran the program.
 
   ```python
@@ -140,13 +141,13 @@ take an output directory, is the one exception, handled below.
   import struct, sys
   h = open(sys.argv[1], "rb").read(16)
   if len(h) < 16:
-      print(f"only {len(h)} bytes read: a pyc header is 16 bytes (truncated, or not a pyc)"); sys.exit(1)
+      print(f"only {len(h)} byte(s) read: a pyc header is 16 bytes (truncated, or not a pyc)"); sys.exit(1)
   if h[2:4] != b"\r\n":
-      print("bytes 2 and 3 are not 0d 0a: not a pyc header"); sys.exit(1)
+      print("bytes 2 and 3 are not 0d 0a: not a pyc header (a headerless marshal dump needs its header prepended)"); sys.exit(1)
   magic, flags = h[:4], struct.unpack("<I", h[4:8])[0]
   m = struct.unpack("<H", magic[:2])[0]
-  if m >= 20121:
-      print(f"magic {m}: a Python 1.5 to 2.7 pyc (8-byte header, magic and mtime), not the 16-byte 3.7+ layout"); sys.exit(1)
+  if m >= 5000:
+      print(f"magic {m}: outside CPython 3's range (Python 1.3 to 2.7 run from 5892 to 62211 with an 8-byte header), not the 16-byte 3.7+ layout"); sys.exit(1)
   if m < 3392:
       print(f"magic {m}: a pyc older than CPython 3.7a4 (8- or 12-byte header, no flags), not the 16-byte 3.7+ layout"); sys.exit(1)
   print("magic", magic[:2].hex(), "(little-endian", m, ") trailer", magic[2:].hex())
@@ -222,8 +223,10 @@ take an output directory, is the one exception, handled below.
   ```python
   # safetensors-header.py <file>: print the JSON header (tensor names, dtypes, shapes, __metadata__); the weights are never read
   import json, struct, sys
-  sys.stdout.reconfigure(errors="backslashreplace")  # a hostile tensor name must not stop the print
+  if sys.stdout: sys.stdout.reconfigure(errors="backslashreplace")  # a hostile tensor name must not stop the print
   LIMIT = 100_000_000  # the format's own header cap
+  def show(s, n=120):  # control characters escaped, a cut marked, so a hostile name cannot forge or hide a row
+      t = "".join(c if c.isprintable() else repr(c)[1:-1] for c in str(s)[:n]); return t + ("..." if len(str(s)) > n else "")
   with open(sys.argv[1], "rb") as f:
       raw = f.read(8)
       if len(raw) < 8: print("shorter than the 8-byte length field: not a safetensors file"); sys.exit(1)
@@ -237,15 +240,15 @@ take an output directory, is the one exception, handled below.
       print(f"header is not UTF-8 JSON ({str(e)[:80]}): not a safetensors file"); sys.exit(1)
   if not isinstance(hdr, dict): print(f"header is JSON but not an object ({type(hdr).__name__}): not a safetensors header"); sys.exit(1)
   meta = hdr.pop("__metadata__", None)
-  if meta is not None and not isinstance(meta, dict): print(f"__metadata__ is {type(meta).__name__}, not an object: not a safetensors header"); sys.exit(1)
+  if meta is not None and (not isinstance(meta, dict) or not all(isinstance(v, str) for v in meta.values())): print(f"__metadata__ is not an object of string values ({type(meta).__name__}): not a safetensors header"); sys.exit(1)
   def ok(t):
       o = t.get("data_offsets") if isinstance(t, dict) else None
-      return isinstance(t, dict) and isinstance(t.get("dtype"), str) and isinstance(t.get("shape"), list) and all(type(x) is int and x >= 0 for x in t["shape"]) and isinstance(o, list) and len(o) == 2 and all(type(x) is int for x in o) and 0 <= o[0] <= o[1]
+      return isinstance(t, dict) and isinstance(t.get("dtype"), str) and t["dtype"] and isinstance(t.get("shape"), list) and all(type(x) is int and x >= 0 for x in t["shape"]) and isinstance(o, list) and len(o) == 2 and all(type(x) is int for x in o) and 0 <= o[0] <= o[1]
   bad = [k for k, t in hdr.items() if not ok(t)]
-  if bad: print(f"{len(bad)} entries lack a string dtype, a shape list of whole numbers or an ascending two-integer data_offsets (first: {bad[0][:60]!r}): not a safetensors header"); sys.exit(1)
-  print(f"header {n} bytes, {len(hdr)} tensors, metadata keys: {sorted(k[:120] for k in meta) if meta else 'none'}")
+  if bad: print(f"{len(bad)} entries lack a non-empty string dtype, a shape list of whole numbers or an ascending two-integer data_offsets (first: {bad[0][:60]!r}): not a safetensors header"); sys.exit(1)
+  print(f"header {n} bytes, {len(hdr)} tensors, metadata keys: {sorted(show(k) for k in meta) if meta else 'none'}")
   for name, t in sorted(hdr.items()):
-      print(f"{name[:120]}\t{str(t['dtype'])[:40]}\t{str(t['shape'])[:200]}\tbytes {t['data_offsets'][1]-t['data_offsets'][0]}")
+      print(f"{show(name)}\t{show(t['dtype'], 40)}\t{show(t['shape'], 200)}\tbytes {t['data_offsets'][1]-t['data_offsets'][0]}")
   ```
 
 - **GGUF:** `GGUF` magic, version (2 or 3), the tensor count, then typed
@@ -262,6 +265,8 @@ take an output directory, is the one exception, handled below.
   # gguf-header.py <file.gguf>: the GGUF header, metadata key/value pairs and tensor directory; tensor data is never read
   import struct, sys
   LIMIT = 100_000_000  # longest string or array accepted; a header field beyond it is corrupt or hostile
+  def show(s, n=120):  # control characters escaped, a cut marked, so a hostile name cannot forge or hide a row
+      t = "".join(c if c.isprintable() else repr(c)[1:-1] for c in str(s)[:n]); return t + ("..." if len(str(s)) > n else "")
   f = open(sys.argv[1], "rb")
   def rd(n):
       b = f.read(n)
@@ -295,12 +300,12 @@ take an output directory, is the one exception, handled below.
   print(f"GGUF version {ver}, {n_tensors} tensors, {n_kv} metadata pairs")
   for _ in range(n_kv):
       k = s(); t = u32(); tn, v = value(t)
-      if isinstance(v, list): shown = f"{len(v)} items, first {str(v[:3])[:80]}"
-      else: shown = str(v)[:120]
-      print(f"{k[:120]}\t{tn}\t{shown}")
+      if isinstance(v, list): shown = f"{len(v)} items, first {show(v[:3], 80)}"
+      else: shown = show(v)
+      print(f"{show(k)}\t{tn}\t{shown}")
   for _ in range(n_tensors):
       name = s(); nd = u32(); dims = [u64() for _ in range(nd)]; ttype = u32(); off = u64()
-      print(f"tensor\t{name[:120]}\tdims {dims}\ttype {ttype}\toffset {off}")
+      print(f"tensor\t{show(name)}\tdims {dims}\ttype {ttype}\toffset {off}")
   ```
 
   A tensor type **number** is read against the writer's release: the integer

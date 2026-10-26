@@ -96,7 +96,8 @@ that blob instead of reading a script. Nothing about it is Electron.
           p, stop = off, min(off + size, len(d))
           while p + 12 <= stop:
               namesz, descsz, ntype = struct.unpack(end + "III", d[p:p+12]); p += 12
-              name = d[p:min(p+namesz, stop)].rstrip(b"\0"); p += (namesz + 3) & ~3
+              if p + namesz > stop: print("note owner runs past the end of its segment or the file: truncated"); sys.exit(1)
+              name = d[p:p+namesz].rstrip(b"\0"); p += (namesz + 3) & ~3
               desc = d[p:min(p+descsz, stop)]; p += (descsz + 3) & ~3
               shown += 1
               if shown <= 200: print(f"note owner {name[:64]!r}{'...' if len(name) > 64 else ''} type {ntype} desc {descsz} bytes")
@@ -113,10 +114,12 @@ that blob instead of reading a script. Nothing about it is Electron.
   (bit 0: the experimental warning disabled; bit 1: a V8 heap snapshot instead
   of script source; bit 2: a code cache follows; bit 3: assets follow; bit 4:
   `execArgv` follows), then a header tail that grew by release and sits before the
-  path: nothing before Node 24.7, one `execArgv` extension byte from 24.7 to 25.6,
-  that byte plus a module-format byte from 25.7 on, Node 26 included (8, 9 or 10
-  bytes in all; `node_sea.h` at the writer's tag is the source, read at 24.6.0,
-  24.7.0, 25.6.1 and 25.7.0). Then the script's path and its source as
+  path: nothing before Node 24.7 (or before 22.20 on the 22 line, where the byte
+  was backported), one `execArgv` extension byte from 24.7 and 22.20 to 25.6, that
+  byte plus a module-format byte from 25.7 on, Node 26 included (8, 9 or 10 bytes
+  in all; `node_sea.h` at the writer's tag gives the size and `SeaSerializer::Write`
+  in `node_sea.cc` the order, read at 22.19.0, 22.20.0, 24.6.0, 24.7.0, 25.6.1 and
+  25.7.0). Then the script's path and its source as
   length-prefixed strings, each a `size_t` length, 8 bytes little-endian from a
   64-bit little-endian writer, followed by the bytes (checked on blobs from Node
   25.5.0). With bit 1 clear the source is plain text:

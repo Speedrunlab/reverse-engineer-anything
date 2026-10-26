@@ -417,10 +417,12 @@ section 1) apply in full.
   text `.crash` report carries the same frames and image list; an address inside
   an ELF binary symbolicates with `llvm-symbolizer --obj=<bin> $(printf '0x%x' <addr>)`
   (Homebrew or a release LLVM; Apple's tools do not ship it), where `<addr>` is
-  the address as the file was linked: the offset itself for a shared object or
-  PIE (linked at 0), the first `LOAD` address from `readelf -l` plus the offset
-  for a non-PIE executable; the runtime `base + imageOffset` names nothing
-  (tested on both kinds). Symbol names printed inside the report are recorded claims, not
+  the first `LOAD` address from `readelf -l` plus the offset: that address is 0
+  for most shared objects and PIEs, so the offset itself, and the link base for a
+  non-PIE executable; the runtime `base + imageOffset` names nothing for a PIE or
+  shared object (the base is randomised) and equals link base plus offset for a
+  non-PIE executable (tested on ET_DYN files linked at 0 and at 0x10000 and on an
+  ET_EXEC). Symbol names printed inside the report are recorded claims, not
   verified; `asi` ("Application Specific Information"), `procLaunch` and every
   path are sample text (`cut -c1-200 | cat -v`), and paths carry user names:
   personal data to count.
@@ -582,7 +584,7 @@ Read, never `insmod`: a module is kernel code.
   if sig_len == 0:
       print("descriptor says sig_len 0: no signature bytes, corrupt trailer, nothing written"); sys.exit(1)
   if body_end <= 0:
-      print(f"descriptor says sig_len {sig_len} but only {len(data) - len(MAGIC) - 12} bytes precede it, leaving no module (the kernel refuses this too): corrupt trailer, nothing written"); sys.exit(1)
+      print(f"descriptor says sig_len {sig_len} but only {len(data) - len(MAGIC) - 12} byte(s) precede it: no module would remain (the kernel refuses this too), corrupt trailer, nothing written"); sys.exit(1)
   print(f"algo {algo} hash {hsh} id_type {id_type} ({'PKCS#7' if id_type == 2 else 'other'}) signer_len {signer_len} key_id_len {key_id_len} sig_len {sig_len}; signed module bytes 0..{body_end}")
   if len(sys.argv) > 2:
       if id_type == 2: open(sys.argv[2], "wb").write(data[body_end:body_end + sig_len]); print("PKCS#7 written to", sys.argv[2])
@@ -590,14 +592,17 @@ Read, never `insmod`: a module is kernel code.
   ```
 
   Run it as `"$W/scripts/run.sh" python3 -I "$W/scripts/modsig.py" <ko> "$W/out/sig-<name>.p7s"`,
-  then `openssl cms -cmsout -inform der -in "$W/out/sig-<name>.p7s" -noout -print | sed -n '/signerInfos:/,/digestAlgorithm:/p'`
+  then `"$W/scripts/run.sh" bash -c 'set -o pipefail; openssl cms -cmsout -inform der -in "$1" -noout -print | sed -n "/signerInfos:/,/digestAlgorithm:/p"' _ "$W/out/sig-<name>.p7s"`
   names the signer by issuer and serial number, or by key identifier when the
   module was signed with `sign-file -k` (the identifier prints as hex rows of 15
-  bytes, so a `grep -A1` had shown 15 of its 20): the kernel's `sign-file` writes
-  a detached CMS signature with no certificate inside, so `openssl pkcs7
-  -print_certs` prints nothing for a real module, and `openssl pkcs7` cannot load
-  the key-identifier form at all (tested on both signature forms, OpenSSL 3 and
-  LibreSSL). The kernel tree's own `scripts/extract-module-sig.pl -s <ko>`
+  bytes, so a `grep -A1` had shown 15 of its 20; the range shows the first signer,
+  and `sign-file` writes exactly one, so read `-print` whole for a CMS with more;
+  `pipefail` keeps `openssl`'s failure as the exit status, where a bare pipe logged
+  `sed`'s 0 for an unreadable file): the kernel's `sign-file` writes a detached CMS
+  signature with no certificate inside, so `openssl pkcs7 -print_certs` prints
+  nothing for a real module, and `openssl pkcs7` cannot load the key-identifier
+  form at all (tested on both signature forms, a two-signer CMS and unreadable
+  files, OpenSSL 3 and LibreSSL). The kernel tree's own `scripts/extract-module-sig.pl -s <ko>`
   does the same (`-d` prints the descriptor, `-0` writes the unsigned module).
   The signature is checked only by a kernel holding the signing key: here it is
   "present, signer X", never "valid". No trailer is absence of a trailer, not

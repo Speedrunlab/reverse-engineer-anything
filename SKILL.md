@@ -4,7 +4,7 @@ description: "Reverse Engineer Anything: analyse shipped software you cannot rea
 license: MIT
 compatibility: Any agent with a terminal/shell tool and file read/write. Needs an operator-supplied analysis environment with no network and no credentials (a disposable VM for live work), the open-source tools in references/toolchain.md installed there, a working directory outside synced folders, and an approver independent of the requester.
 metadata:
-  version: 1.18.0
+  version: 1.19.0
   author: Speedrun AI Labs
   tags: reverse-engineering, binary-analysis, security-research, interoperability
 ---

@@ -74,7 +74,7 @@ A saved capture is just a file. Read it; do not replay or fetch from it.
   ```sh
   jq -r '.log.entries | to_entries[] | select((.value.response.content.mimeType // "") | test("javascript")) | "\(.key)\t\(.value.response.content.encoding // "text")\t\(.value.request.url)"' <file> > "$ROOT/index.tsv"
   while IFS=$'\t' read -r i enc url; do
-    if [ "$enc" = base64 ]; then jq -r ".log.entries[$i].response.content.text" <file> | base64 -d > "$ROOT/script-$i.js"
+    if [ "$enc" = base64 ]; then jq -r ".log.entries[$i].response.content.text // empty" <file> | base64 -d > "$ROOT/script-$i.js"
     else jq -r ".log.entries[$i].response.content.text" <file> > "$ROOT/script-$i.js"; fi
   done < "$ROOT/index.tsv"
   ```
@@ -87,15 +87,16 @@ A saved capture is just a file. Read it; do not replay or fetch from it.
   `application/grpc` (`+proto`), `application/grpc-web+proto` or
   `application/grpc-web-text` is a binary message, not JSON. Get one body out
   as a file, never into context: from a HAR,
-  `jq -r '.log.entries[<i>].response.content | select(.encoding == "base64") | .text' <file> | base64 -d > "$W/out/body-<name>-<i>.bin"`
+  `jq -r '.log.entries[<i>].response.content | select(.encoding == "base64") | .text // empty' <file> | base64 -d > "$W/out/body-<name>-<i>.bin"`
   when the entry says `"encoding": "base64"` (an entry without it holds text,
   and this form writes an empty file for it: check the size). A `grpc-web-text`
   body is base64 on top, each frame usually encoded and padded on its own (the
   protocol does not promise the boundary; the loop below copes either way): save
   the text first,
   `jq -r '.log.entries[<i>].response.content | if .encoding == "base64" then (.text // empty | @base64d) else (.text // empty) end' <file> > "$W/out/body-<name>-<i>.b64"`
-  (Chrome records this content type with `"encoding": "base64"`, one more layer
-  over the body's own, and `@base64d` peels it; an entry without `text` leaves the
+  (Playwright, and Chrome's DevTools when the Content-Type carries no charset,
+  record this content type with `"encoding": "base64"`, one more layer over the
+  body's own, and `@base64d` peels it; an entry without `text` leaves the
   file empty, where a bare `.text` would write `null` and the loop would decode it
   to three bytes: check the size, and that the file holds base64 text, not frames),
   then decode it chunk by chunk into a different file,
@@ -115,14 +116,17 @@ A saved capture is just a file. Read it; do not replay or fetch from it.
   and the `tshark` man page). A gRPC body from a HAR is framed: one
   byte (0 plain, 1 compressed as `grpc-encoding` says), four bytes big-endian
   length, then the message, repeated. Take the first message by its declared
-  length, `len=$((0x$(xxd -p -s 1 -l 4 <body>))); if [ "$len" -eq 0 ]; then : > <msg>; else tail -c +6 <body> | head -c "$len" > <msg>; fi`
-  (tested; `tail -c +6` alone is right only for a single-frame body, and the
-  branch is there because `head -c 0` is an error on macOS), decompress it if
+  length, `[ "$(wc -c < <body>)" -ge 5 ] && len=$((0x$(xxd -p -s 1 -l 4 <body>))) && if [ "$len" -eq 0 ]; then : > <msg>; else tail -c +6 <body> | head -c "$len" > <msg>; fi`
+  (tested; the size check fails a body shorter than a frame head, which would
+  otherwise read as an empty message; `tail -c +6` alone is right only for a
+  single-frame body, and the branch is there because `head -c 0` is an error on
+  macOS), decompress it if
   flagged, and take the rest with `tail -c +$((6 + len)) <body> > <rest>` for the
   next frame (`tail` counts from 1, so `5 + len` starts one byte early; tested).
   Decode an unframed message without a schema (`<msg>` from the cut, a `tshark`
   line's file, or the whole body when the content type is `application/x-protobuf`,
-  which has no frame) with `protoc --decode_raw < <msg> > "$W/out/decode-<name>-<i>.txt"`:
+  which has no frame) with `protoc --decode_raw < <msg> > "$W/out/decode-<name>-<i>-<k>.txt"`,
+  one file per frame `<k>`:
   it prints field numbers and raw values, and a length-delimited field may be a
   string, bytes, a nested message or packed numbers, so names and types stay
   inferences until the operator supplies the `.proto`
