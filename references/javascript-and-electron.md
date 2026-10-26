@@ -77,7 +77,8 @@ that blob instead of reading a script. Nothing about it is Electron.
           phoff, shoff = struct.unpack(end + "QQ", d[32:48]); phentsize, phnum, shentsize, shnum = struct.unpack(end + "HHHH", d[54:62])
       else:
           phoff, shoff = struct.unpack(end + "II", d[28:36]); phentsize, phnum, shentsize, shnum = struct.unpack(end + "HHHH", d[42:50])
-      ranges, shown, cut = [], 0, False
+      ranges, shown, cut, first_cut = [], 0, 0, None
+      def cut_line(): return f"{cut} segment(s) or section(s) hold a note running past their end (first at offset {first_cut}); the rest of each was skipped"
       for i in range(phnum):
           ph = d[phoff + i * phentsize: phoff + (i + 1) * phentsize]
           if cls == 2:
@@ -96,18 +97,21 @@ that blob instead of reading a script. Nothing about it is Electron.
           p, stop = off, min(off + size, len(d))
           while p + 12 <= stop:
               namesz, descsz, ntype = struct.unpack(end + "III", d[p:p+12]); p += 12
-              if p + namesz > stop: cut = True; print(f"notes at offset {off}: an owner runs past the end of the segment or file; the rest of them skipped"); break
+              if p + namesz > stop: cut += 1; first_cut = off if first_cut is None else first_cut; break
               name = d[p:p+namesz].rstrip(b"\0"); p += (namesz + 3) & ~3
               desc = d[p:min(p+descsz, stop)]; p += (descsz + 3) & ~3
+              if len(desc) < descsz and name != want: cut += 1; first_cut = off if first_cut is None else first_cut; break
               shown += 1
               if shown <= 200: print(f"note owner {name[:64]!r}{'...' if len(name) > 64 else ''} type {ntype} desc {descsz} bytes")
               elif shown == 201: print("(more notes not listed; the search goes on)")
               if name == want:
                   if len(desc) < descsz: print("note is truncated by the end of its segment or the file"); sys.exit(1)
+                  if cut: print(cut_line())
                   open(out, "wb").write(desc); print("written", out); sys.exit(0)
   except struct.error:
       print("truncated ELF: a header or table runs past the end of the file"); sys.exit(1)
-  print("a note owner runs past the end of its segment or the file: truncated" if cut else "no note with that owner"); sys.exit(1)
+  if cut: print(cut_line())
+  print("no note with that owner"); sys.exit(1)
   ```
 
 - **Read the blob:** it begins with the magic bytes `20 da 43 01`, a flags word

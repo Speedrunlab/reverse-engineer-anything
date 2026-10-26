@@ -2,6 +2,59 @@
 
 Reverse Engineer Anything. Newest first.
 
+## v1.22.0 (26 Oct 2026)
+
+Hardening round 20, on v1.21.0's own changes only: two fresh readers, proven
+findings only. No high. The fixes:
+
+- Kernel modules: the signer line prints the content type too (`sed -n "2p;..."`)
+  and the passage, now plain sentences, requires `contentType: pkcs7-signedData`
+  before any signer is read: a CMS of another type whose string field carries
+  fake print lines passed v1.21.0's shape rule on LibreSSL with one
+  `signerInfos:` line and a serial, and printed nothing on OpenSSL 3.6, so the
+  two builds read one file oppositely. The whole shell runs under `LC_ALL=C`,
+  because BSD `sed` in a UTF-8 locale failed on a lone high byte LibreSSL
+  prints (a valid signature then gave `sed: RE error`, exit 1, no signer). The
+  text names `signerInfos:` followed by `<EMPTY>` (a SignedData with no
+  signer), says to count `digestAlgorithm:` lines in the whole print for the
+  signer count, bounds each line with `cut -c1-200` (a megabyte-long issuer had
+  printed whole), and tells OpenSSL users to add `-nameopt
+  esc_ctrl,esc_msb,utf8,sep_comma_plus_space`, since 3.2.0 to 3.2.4, 3.3.0 to
+  3.3.3 and 3.4.0 to 3.4.1 print a newline inside a name raw by their defaults,
+  which let a forged issuer hide the real serial inside the range (proven on
+  3.4.1 built from the release tarball by a reviewer; the windows from
+  `apps/lib/apps.c` at each tag and the 3.4.2 change note; 3.0.17, also built,
+  escapes names).
+- Protobuf and gRPC: the frame walk is spelled out (fresh `<msg>` and `<rest>`
+  names per frame, `<rest>` is the next `<body>` and never its own name, stop at
+  an empty `<rest>` or the cut's exit 1, a stale `<msg>` is not a message); a
+  `tshark` line's schema decode has a name.
+- Helpers: `elf-note.py` prints one summary line for every segment or section
+  holding a note that runs past its end, with the count and first offset, and
+  counts a descriptor past its segment too (v1.21.0 printed one line per cut
+  segment, so an ELF with 65,535 program headers pointing at one cut note put
+  6.6 MB on stdout; a descriptor overrun had been skipped silently);
+  `gguf-header.py` renders array items through `show()` at every depth and
+  prints no "first" for an empty array (nested arrays had been escaped twice
+  and an empty array printed a dangling "first"); `safetensors-header.py`
+  quotes the bad entry's name (an empty or blank name had disappeared) and
+  prints the metadata key count instead of the word "none" (a key named `none`
+  had read as no metadata).
+- CHANGELOG: v1.21.0's `cat -v` note said 0x80 to 0x9f where 0xad is marked
+  too, and "compat flags" where "defaults" is what the 3.0 and 3.1 sources say.
+
+Tested here: the signer line on a CMS of unknown type, an enveloped and a
+digested CMS each carrying fake print lines, on a valid signature with a lone
+high byte in a string field (LibreSSL 3.3 and OpenSSL 3.6, in a UTF-8 locale),
+and on every earlier CMS fixture; a forged issuer with a newline on OpenSSL
+3.4.1 and 3.0.17 built from the release tarballs, with and without the
+`-nameopt`; the 65,535-header ELF (one line now); a descriptor overrun before
+the wanted note; nested and empty GGUF arrays; an empty tensor name in the
+bad-entry message and a metadata key named `none`; the helpers on every
+earlier fixture. Doc-checked, not run: the 3.2.x and 3.3.x name defaults
+(source at each tag), `protoc`. Round 21 on this version's own changes has
+not run.
+
 ## v1.21.0 (26 Oct 2026)
 
 Hardening round 19, on v1.20.0's own changes only: two fresh readers, proven
@@ -14,9 +67,9 @@ findings only. No high. The fixes:
   (two `signerInfos:` lines, or no `serialNumber:` or hex row before
   `digestAlgorithm:`, is a forged or cut CMS; an empty result with exit 0 is
   a CMS with no `signerInfos`). `cat -v` runs under `LC_ALL=C`, since BSD
-  `cat -v` in a UTF-8 locale marks only 0x80 to 0x9f; "OpenSSL 3" became
-  "OpenSSL 3.2 and later", because 3.0 and 3.1 printed names with the compat
-  flags that escape control bytes. The whole-print save has its command.
+  `cat -v` in a UTF-8 locale marks only some high bytes (0x80 to 0x9f and 0xad
+  here); "OpenSSL 3" became "OpenSSL 3.2 and later", because 3.0 and 3.1
+  printed names with defaults that escape control bytes. The whole-print save has its command.
 - Protobuf and gRPC: the next-frame command reads the length itself
   (`tail -c +$((6 + 0x$(xxd ...)))`), because every command runs in a fresh
   shell where the cut's `len` is unset and `6 + len` was 6, which put the next
@@ -44,7 +97,7 @@ two metadata-key fixtures and the forged key; a ground digest collision at 8
 characters; the skipped-segment line on a cut decoy; the helpers on every
 earlier fixture. Doc-checked, not run: OpenSSL 3.0 to 3.5 name flags
 (`apps/lib/apps.c` and the 3.4.2 change note), `protoc`. Round 20 on this
-version's own changes has not run.
+version's own changes ran the same day; its findings are v1.22.0.
 
 ## v1.20.0 (26 Oct 2026)
 

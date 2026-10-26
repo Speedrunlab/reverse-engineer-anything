@@ -250,8 +250,8 @@ take an output directory, is the one exception, handled below.
       o = t.get("data_offsets") if isinstance(t, dict) else None
       return isinstance(t, dict) and isinstance(t.get("dtype"), str) and t["dtype"] and isinstance(t.get("shape"), list) and all(type(x) is int and x >= 0 for x in t["shape"]) and isinstance(o, list) and len(o) == 2 and all(type(x) is int for x in o) and 0 <= o[0] <= o[1]
   bad = [k for k, t in hdr.items() if not ok(t)]
-  if bad: print(f"{len(bad)} entries lack a non-empty string dtype, a shape list of whole numbers or an ascending two-integer data_offsets (first: {show(bad[0], 60)}): not a safetensors header"); sys.exit(1)
-  print(f"header {n} bytes, {len(hdr)} tensors, metadata keys: {chr(9).join(sorted(show(k) for k in meta)) if meta else 'none'}")
+  if bad: print(f"{len(bad)} entries lack a non-empty string dtype, a shape list of whole numbers or an ascending two-integer data_offsets (first: '{show(bad[0], 60)}'): not a safetensors header"); sys.exit(1)
+  print(f"header {n} bytes, {len(hdr)} tensors, {len(meta) if meta else 0} metadata key(s)" + (": " + chr(9).join(sorted(show(k) for k in meta)) if meta else ""))
   for name, t in sorted(hdr.items()):
       print(f"{show(name)}\t{show(t['dtype'], 40)}\t{show(t['shape'], 200)}\tbytes {t['data_offsets'][1]-t['data_offsets'][0]}")
   ```
@@ -287,6 +287,7 @@ take an output directory, is the one exception, handled below.
       return rd(n).decode("utf-8", "replace")
   SCALAR = {0: ("u8", "<B", 1), 1: ("i8", "<b", 1), 2: ("u16", "<H", 2), 3: ("i16", "<h", 2), 4: ("u32", "<I", 4), 5: ("i32", "<i", 4),
             6: ("f32", "<f", 4), 7: ("bool", "<?", 1), 10: ("u64", "<Q", 8), 11: ("i64", "<q", 8), 12: ("f64", "<d", 8)}
+  def item(x, n=40): return "[" + " ".join(item(y, n) for y in x) + "]" if isinstance(x, list) else show(x, n)
   def value(t, depth=0):
       if t == 8: return "string", s()
       if t == 9:
@@ -307,7 +308,7 @@ take an output directory, is the one exception, handled below.
   print(f"GGUF version {ver}, {n_tensors} tensors, {n_kv} metadata pairs")
   for _ in range(n_kv):
       k = s(); t = u32(); tn, v = value(t)
-      if isinstance(v, list): shown = f"{len(v)} items, first " + "\t".join(show(x, 40) for x in v[:3])
+      if isinstance(v, list): shown = f"{len(v)} items" + (", first " + "\t".join(item(x) for x in v[:3]) if v else "")
       else: shown = show(v)
       print(f"{show(k)}\t{tn}\t{shown}")
   for _ in range(n_tensors):
