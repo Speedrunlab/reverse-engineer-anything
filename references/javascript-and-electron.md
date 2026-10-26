@@ -77,7 +77,7 @@ that blob instead of reading a script. Nothing about it is Electron.
           phoff, shoff = struct.unpack(end + "QQ", d[32:48]); phentsize, phnum, shentsize, shnum = struct.unpack(end + "HHHH", d[54:62])
       else:
           phoff, shoff = struct.unpack(end + "II", d[28:36]); phentsize, phnum, shentsize, shnum = struct.unpack(end + "HHHH", d[42:50])
-      ranges, shown = [], 0
+      ranges, shown, cut = [], 0, False
       for i in range(phnum):
           ph = d[phoff + i * phentsize: phoff + (i + 1) * phentsize]
           if cls == 2:
@@ -96,7 +96,7 @@ that blob instead of reading a script. Nothing about it is Electron.
           p, stop = off, min(off + size, len(d))
           while p + 12 <= stop:
               namesz, descsz, ntype = struct.unpack(end + "III", d[p:p+12]); p += 12
-              if p + namesz > stop: print("note owner runs past the end of its segment or the file: truncated"); sys.exit(1)
+              if p + namesz > stop: cut = True; break  # this segment is corrupt or cut; the others are still searched
               name = d[p:p+namesz].rstrip(b"\0"); p += (namesz + 3) & ~3
               desc = d[p:min(p+descsz, stop)]; p += (descsz + 3) & ~3
               shown += 1
@@ -107,7 +107,7 @@ that blob instead of reading a script. Nothing about it is Electron.
                   open(out, "wb").write(desc); print("written", out); sys.exit(0)
   except struct.error:
       print("truncated ELF: a header or table runs past the end of the file"); sys.exit(1)
-  print("no note with that owner"); sys.exit(1)
+  print("a note owner runs past the end of its segment or the file: truncated" if cut else "no note with that owner"); sys.exit(1)
   ```
 
 - **Read the blob:** it begins with the magic bytes `20 da 43 01`, a flags word
@@ -115,11 +115,11 @@ that blob instead of reading a script. Nothing about it is Electron.
   of script source; bit 2: a code cache follows; bit 3: assets follow; bit 4:
   `execArgv` follows), then a header tail that grew by release and sits before the
   path: nothing before Node 24.7 (or before 22.20 on the 22 line, where the byte
-  was backported), one `execArgv` extension byte from 24.7 and 22.20 to 25.6, that
-  byte plus a module-format byte from 25.7 on, Node 26 included (8, 9 or 10 bytes
-  in all; `node_sea.h` at the writer's tag gives the size and `SeaSerializer::Write`
-  in `node_sea.cc` the order, read at 22.19.0, 22.20.0, 24.6.0, 24.7.0, 25.6.1 and
-  25.7.0). Then the script's path and its source as
+  was backported), one `execArgv` extension byte from 24.7 to 25.6 and on the 22
+  line from 22.20 on, that byte plus a module-format byte from 25.7 on, Node 26
+  included (8, 9 or 10 bytes in all; `node_sea.h` at the writer's tag gives the
+  size and `SeaSerializer::Write` in `node_sea.cc` the order, both read at 22.19.0,
+  22.20.0, 24.6.0, 24.7.0, 25.6.1 and 25.7.0). Then the script's path and its source as
   length-prefixed strings, each a `size_t` length, 8 bytes little-endian from a
   64-bit little-endian writer, followed by the bytes (checked on blobs from Node
   25.5.0). With bit 1 clear the source is plain text:

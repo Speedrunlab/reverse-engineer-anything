@@ -131,9 +131,9 @@ take an output directory, is the one exception, handled below.
   the file is hash-based (PEP 552) or carries the source's mtime and size; a
   file whose bytes 2 and 3 are not `0d 0a`, whose magic is below 3392 (the 3.7a4
   value that brought this header; earlier 3.x files carry 8 or 12 bytes) or whose
-  magic is 5000 or more (Python 1.3 to 2.7 run from 5892 to 62211 with an 8-byte
-  header; Python 3 magics have not reached 4000) is not this layout, and the helper
-  says so. The magic names
+  magic is 5000 or more (Python 1.3 to 2.7 run from 5892 to 62211, or 62212 for
+  2.7 under `-U`, with an 8-byte header; Python 3 magics have not reached 4000) is
+  not this layout, and the helper says so. The magic names
   the format, not the interpreter that ran the program.
 
   ```python
@@ -222,11 +222,12 @@ take an output directory, is the one exception, handled below.
 
   ```python
   # safetensors-header.py <file>: print the JSON header (tensor names, dtypes, shapes, __metadata__); the weights are never read
-  import json, struct, sys
+  import hashlib, json, struct, sys
   if sys.stdout: sys.stdout.reconfigure(errors="backslashreplace")  # a hostile tensor name must not stop the print
   LIMIT = 100_000_000  # the format's own header cap
-  def show(s, n=120):  # control characters escaped, a cut marked, so a hostile name cannot forge or hide a row
-      t = "".join(c if c.isprintable() else repr(c)[1:-1] for c in str(s)[:n]); return t + ("..." if len(str(s)) > n else "")
+  def show(s, n=120):  # control characters escaped, a cut marked with length and digest, so a hostile name cannot forge or hide a row
+      s = str(s); t = "".join(c if c.isprintable() and c != "\\" else repr(c)[1:-1] for c in s[:n])
+      return t + (f"...({len(s)} chars, sha256 {hashlib.sha256(s.encode('utf-8', 'surrogatepass')).hexdigest()[:8]})" if len(s) > n else "")
   with open(sys.argv[1], "rb") as f:
       raw = f.read(8)
       if len(raw) < 8: print("shorter than the 8-byte length field: not a safetensors file"); sys.exit(1)
@@ -240,13 +241,15 @@ take an output directory, is the one exception, handled below.
       print(f"header is not UTF-8 JSON ({str(e)[:80]}): not a safetensors file"); sys.exit(1)
   if not isinstance(hdr, dict): print(f"header is JSON but not an object ({type(hdr).__name__}): not a safetensors header"); sys.exit(1)
   meta = hdr.pop("__metadata__", None)
-  if meta is not None and (not isinstance(meta, dict) or not all(isinstance(v, str) for v in meta.values())): print(f"__metadata__ is not an object of string values ({type(meta).__name__}): not a safetensors header"); sys.exit(1)
+  if meta is not None and not isinstance(meta, dict): print(f"__metadata__ is {type(meta).__name__}, not an object: not a safetensors header"); sys.exit(1)
+  badk = next((k for k, v in (meta or {}).items() if not isinstance(v, str)), None)
+  if badk is not None: print(f"__metadata__ value for {show(badk)} is {type(meta[badk]).__name__}, not a string: not a safetensors header"); sys.exit(1)
   def ok(t):
       o = t.get("data_offsets") if isinstance(t, dict) else None
       return isinstance(t, dict) and isinstance(t.get("dtype"), str) and t["dtype"] and isinstance(t.get("shape"), list) and all(type(x) is int and x >= 0 for x in t["shape"]) and isinstance(o, list) and len(o) == 2 and all(type(x) is int for x in o) and 0 <= o[0] <= o[1]
   bad = [k for k, t in hdr.items() if not ok(t)]
   if bad: print(f"{len(bad)} entries lack a non-empty string dtype, a shape list of whole numbers or an ascending two-integer data_offsets (first: {bad[0][:60]!r}): not a safetensors header"); sys.exit(1)
-  print(f"header {n} bytes, {len(hdr)} tensors, metadata keys: {sorted(show(k) for k in meta) if meta else 'none'}")
+  print(f"header {n} bytes, {len(hdr)} tensors, metadata keys: {', '.join(sorted(show(k) for k in meta)) if meta else 'none'}")
   for name, t in sorted(hdr.items()):
       print(f"{show(name)}\t{show(t['dtype'], 40)}\t{show(t['shape'], 200)}\tbytes {t['data_offsets'][1]-t['data_offsets'][0]}")
   ```
@@ -263,10 +266,12 @@ take an output directory, is the one exception, handled below.
 
   ```python
   # gguf-header.py <file.gguf>: the GGUF header, metadata key/value pairs and tensor directory; tensor data is never read
-  import struct, sys
+  import hashlib, struct, sys
+  if sys.stdout: sys.stdout.reconfigure(errors="backslashreplace")  # a hostile key must not stop the print
   LIMIT = 100_000_000  # longest string or array accepted; a header field beyond it is corrupt or hostile
-  def show(s, n=120):  # control characters escaped, a cut marked, so a hostile name cannot forge or hide a row
-      t = "".join(c if c.isprintable() else repr(c)[1:-1] for c in str(s)[:n]); return t + ("..." if len(str(s)) > n else "")
+  def show(s, n=120):  # control characters escaped, a cut marked with length and digest, so a hostile name cannot forge or hide a row
+      s = str(s); t = "".join(c if c.isprintable() and c != "\\" else repr(c)[1:-1] for c in s[:n])
+      return t + (f"...({len(s)} chars, sha256 {hashlib.sha256(s.encode('utf-8', 'surrogatepass')).hexdigest()[:8]})" if len(s) > n else "")
   f = open(sys.argv[1], "rb")
   def rd(n):
       b = f.read(n)

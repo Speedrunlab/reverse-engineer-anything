@@ -2,6 +2,54 @@
 
 Reverse Engineer Anything. Newest first.
 
+## v1.20.0 (26 Oct 2026)
+
+Hardening round 18, on v1.19.0's own changes only: two fresh readers, proven
+findings only. No high. The fixes:
+
+- `elf-note.py` searches on past a note whose owner is cut by its segment and
+  reports "truncated" only when no later segment holds the owner (v1.19.0's
+  check stopped at the first cut note, so a corrupt or decoy PT_NOTE ahead of
+  the real one turned a working extraction into a failure; `llvm-readelf -n`
+  warns and reads on).
+- Kernel modules: the signer range is anchored at line start (`^ *signerInfos:`
+  to `^ *digestAlgorithm:`), so an issuer name carrying those words cannot end
+  it early and drop the serial; the line ends in `cat -v`, since OpenSSL 3
+  passes a right-to-left override raw where LibreSSL escapes it; a CMS with
+  more than one signer goes to a file and is read with counts, not whole.
+- Protobuf and gRPC: the frame cut also checks the body holds the declared
+  length (a frame cut short read as a short message, exit 0); the Electron
+  script loop's text branch ends in `// empty` too (a 304-style entry wrote a
+  five-byte `null` script); the frame index `<k>` is defined (from 1; a
+  `tshark` line's file takes its `<n>`) and the schema decode goes to a file
+  like the raw one.
+- Node.js single executables: the extension-byte sentence reads as two ranges,
+  24.7 to 25.6 and the 22 line from 22.20 on, not one interval that would take
+  in 23.x and early 24.
+- `.ips`: the symbolizer sentence says "offset itself for those, and link base
+  plus offset for a non-PIE executable".
+- Helpers: `show()` escapes a backslash too, so a hostile newline and a literal
+  `\n` in a name print differently; a cut name carries its length and a short
+  digest, so two long names with one prefix stay distinct (the bare `...` had
+  not told them apart); metadata keys print through it rather than a list repr,
+  and a non-string metadata value is reported by its key; `gguf-header.py` gets
+  the same stdout guard as its sibling (a non-UTF-8 locale and a non-Latin key
+  gave a traceback); `modsig.py`'s no-module message drops "but only" for the
+  equal case.
+- CHANGELOG: the v1.19.0 entry had the Python 1.3 and 1.4 magics in the wrong
+  order (1.3 is 11913, 1.4 is 5892); the prose notes 2.7's `-U` magic 62212.
+
+Tested here: the cut-decoy and huge-namesz ELFs against the v1.18.0, v1.19.0
+and new helpers (`llvm-readelf -n` as the oracle); the anchored signer line on a
+hostile issuer with a right-to-left override, both signature forms, a two-signer
+CMS and unreadable files (both OpenSSL builds); the stricter cut on a frame cut
+short, empty, 4-byte, zero-length-frame and multi-frame bodies; the script
+loop's text branch on an entry without `text`; `show()` on a real newline
+against a literal `\n` and on two 121-character names sharing a prefix;
+`gguf-header.py` on a Hebrew key under a Latin-1 locale and with stdout closed;
+the helpers on every earlier fixture. Round 19 on this version's own changes
+has not run.
+
 ## v1.19.0 (26 Oct 2026)
 
 Hardening round 17, on v1.18.0's own changes only: two fresh readers, proven
@@ -27,7 +75,7 @@ findings only. No high. The fixes:
   exit 0); one decode file per frame; the recorder sentence names Playwright
   and DevTools, and when DevTools writes `encoding`.
 - Helpers: `pyc-header.py` refuses every magic from 5000 up (Python 1.3 and 1.4,
-  5892 and 11913, had read as 3.7+, and "1.5 to 2.7" was not the whole band)
+  11913 and 5892, had read as 3.7+, and "1.5 to 2.7" was not the whole band)
   and points a headerless marshal dump at the prepend step; `safetensors-header.py`
   and `gguf-header.py` print control characters in names, dtypes, keys and
   string values escaped and mark a cut name with `...` (a newline in a name had
@@ -51,10 +99,11 @@ metadata value, a closed stdout, a note owner cut by its segment, a `sig_len`
 equal to the bytes before it). Doc-checked, not run: `node_sea.h` at 22.19.0
 and 22.20.0 and `SeaSerializer::Write` at 25.7.0, DevTools' HAR writer and the
 CDP `base64Encoded` flag (a reviewer's loopback probe against Chrome). Round 18
-on this version's own changes has not run.
+on this version's own changes ran the same day; its findings are v1.20.0.
 
-Correction to the v1.18.0 note: its first bullet said "header tail" for the
-whole 8-, 9- or 10-byte header; the tail is the 0, 1 or 2 bytes after the flags.
+Correction to the v1.18.0 note: its first bullet had said "header tail" for the
+whole 8-, 9- or 10-byte header (reworded in place by v1.19.0); the tail is the 0,
+1 or 2 bytes after the flags.
 
 ## v1.18.0 (26 Oct 2026)
 
