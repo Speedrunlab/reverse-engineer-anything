@@ -2,6 +2,64 @@
 
 Reverse Engineer Anything. Newest first.
 
+## v1.17.0 (26 Oct 2026)
+
+Hardening round 15, on v1.16.0's own changes only: two fresh readers (an
+adversarial read of the v1.16.0 diff, a walk of every changed command and
+helper on fixtures), proven findings only. The fixes:
+
+- `.ips`: convert the sum `base + imageOffset`, not the parts; `llvm-symbolizer`
+  takes the module-relative offset.
+- One function by name: the range flags need `0x` (a bare value is not read as
+  hex); on macOS the tool is `xcrun llvm-objdump`, which is not on the PATH.
+- Kernel modules: the signer line reads the CMS structure (`openssl cms -cmsout
+  -print`), so a module signed with `sign-file -k` (key identifier, which
+  `openssl pkcs7` cannot load) is named too.
+- Node.js single executables: the header tail before the path is 0, 1 or 2
+  bytes by release (Node 24.0, later 24 and 25, Node 26), not "fields after";
+  a printable length byte can trail the path in `strings` output.
+- Protobuf and gRPC: the `grpc-web-text` chunk loop reads a saved `.b64` and
+  writes a different file (reading and writing one name truncated the input),
+  and whole-body `base64 -d` fails at the first mid-stream padding (macOS
+  writes nothing); the next frame is `tail -c +$((6 + n))` (`5 + n` started
+  one byte early); a zero-length message is written as an empty file
+  (`head -c 0` errors on macOS); the `tshark` line splits comma-joined
+  occurrences with `tr`, says which encodings Wireshark inflates, and notes
+  that a zero-length message adds no field, so `<n>` counts lines.
+- Evidence: not applicable is closed, could not be tested stays open; a full
+  pass is defined against that.
+- GGUF type numbers: `I8`, `I16`, `I32` moved as IQ types were inserted ahead,
+  pinned at 24 to 26 in March 2024 (the "16 to 25" range was wrong).
+- Helpers: `pyc-header.py` refuses magic numbers below 3392 and from 20121 up
+  (3.6-and-older and Python 2 files had read as 3.7+: every pyc since 1.5
+  carries `0d 0a`, so that check alone separates nothing); `elf-note.py`
+  prints a note owner capped at 64 bytes (a hostile `namesz` flooded the
+  output) and refuses an `EI_CLASS` or `EI_DATA` byte outside 1 and 2 (it had
+  read as "truncated"); `safetensors-header.py` refuses a header that is not
+  an object of tensor entries with a dtype, a shape list and ascending integer
+  offsets, a `__metadata__` that is not an object, and a nest deeper than the
+  JSON parser allows (each gave a traceback); `gguf-header.py` stops at arrays
+  nested over four deep (a deep nest hit the recursion limit); `modsig.py`
+  says "no signature bytes" for a zero `sig_len` (its message had contradicted
+  itself); `entropy.py` says so on an empty file. v1.16.0's "every helper"
+  line was wider than the cases it had covered.
+
+Tested here: every helper on the good fixtures, the earlier edge cases and the
+new ones (3.6, 3.7a1 and Python 2.7 magics, a hostile ELF note name, an
+`EI_DATA` of 3, wrong-shape safetensors headers including a 200,000-deep nest,
+a 1,500-deep GGUF array, a zero `sig_len`, an empty file); the chunk loop with
+separate and shared names and `base64 -d` on a two-chunk body; the `6 + n`
+and `5 + n` walks on a two-frame body; `head -c 0`; `llvm-symbolizer` with
+offset and with `base + offset`; `openssl cms -cmsout` on issuer-and-serial
+and key-identifier signatures (OpenSSL 3 and LibreSSL); the `0x` and bare
+range forms. Doc-checked, not run: the `tshark` aggregator default (its man
+page) and the zero-length return and gzip-or-deflate test in Wireshark's
+`packet-grpc.c`, Node's `node_sea.h` at the 24.0.0 and 26.0.0 tags, CPython's
+magic table (3392 and 62211).
+
+Correction to the v1.16.0 note: `llvm-symbolizer --obj` was listed as absent
+here; it is present (Homebrew LLVM 22, off the PATH) and ran in this round.
+
 ## v1.16.0 (26 Oct 2026)
 
 Hardening round 14: the v1.15.0 additions walked by three fresh readers (an

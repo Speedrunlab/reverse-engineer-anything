@@ -59,8 +59,8 @@ decompile anything:
 - Any architecture: `readelf -h` reads the class, byte order and machine of any
   ELF on any host, but `objdump -d` disassembles only targets its build knows
   (`binutils-multiarch`, or an `llvm-objdump` built with the targets you need:
-  `llvm-objdump --version` lists them, and Apple's build has only AArch64, Arm,
-  WebAssembly and x86).
+  `llvm-objdump --version` lists them; Apple's build, reached as `xcrun llvm-objdump`
+  since it is not on the PATH, has only AArch64, Arm, WebAssembly and x86).
   A section flagged `C` in `readelf -S` is compressed (zlib, or zstd with
   binutils 2.40+) and reads with `readelf -z -p <section>` or
   `llvm-readelf --decompress -p <section>`. Record machine, class and byte order
@@ -132,13 +132,15 @@ On macOS, `readelf` and `nm -D` are not installed by default: use `llvm-readelf`
   the credentialed host; version recorded with each finding). Opening a file in
   any decompiler is static; only running the target is live.
 - **One function by name, no project:** `llvm-objdump -d --disassemble-symbols=<symbol> <bin> > "$W/out/dis-<name>-<symbol>.txt"`
-  (tested; GNU binutils 2.32+ spells it `objdump -d --disassemble=<symbol>`)
+  (tested; on macOS it is `xcrun llvm-objdump`; GNU binutils 2.32+ spells it
+  `objdump -d --disassemble=<symbol>`)
   prints one function's disassembly, the cheapest seed-driven read before a
   Ghidra project. Mach-O symbols carry a leading underscore (`_main`), and a
   symbol that is not there is only a warning with exit 0 and an output file
   holding nothing but the header, so check the file has a body (tested). On a
-  stripped binary give `--start-address=<hex>` and `--stop-address=<hex>` a range
-  from the inventory (the `=` form; the spaced form is rejected).
+  stripped binary give `--start-address=0x<hex>` and `--stop-address=0x<hex>` a range
+  from the inventory (the `=` form with the `0x` prefix: the spaced form is
+  rejected, and a value without `0x` is not read as hex).
 - Work from a seed: an exported symbol, a string's cross-reference, an import
   call site. Follow it outward only as far as the question needs.
 
@@ -408,11 +410,12 @@ section 1) apply in full.
   offline with the binary or dSYM whose `dwarfdump --uuid` matches the image's
   `uuid`: `atos -o <binary or dSYM DWARF> -arch <arch> -l <base> <address>`
   (tested). `atos` reads `-l` and the addresses as hex with or without `0x`,
-  and the report's `base` and `imageOffset` are decimal: convert first
-  (`printf '0x%x' <decimal>`), or a decimal value is read as a different address
-  and names the wrong symbol (tested). An older text `.crash` report carries the
-  same frames and image list; an address inside an ELF binary symbolicates with
-  `llvm-symbolizer --obj=<bin> <address>` rather than `atos`. Symbol names printed inside the report are recorded claims, not
+  and the report's `base` and `imageOffset` are decimal: convert the base and the
+  sum `base + imageOffset` first (`printf '0x%x' <decimal>`), or a decimal value
+  is read as a different address and names the wrong symbol (tested). An older
+  text `.crash` report carries the same frames and image list; an address inside
+  an ELF binary symbolicates with `llvm-symbolizer --obj=<bin> 0x<imageOffset>`,
+  which takes the module-relative offset, not `base + imageOffset` (tested). Symbol names printed inside the report are recorded claims, not
   verified; `asi` ("Application Specific Information"), `procLaunch` and every
   path are sample text (`cut -c1-200 | cat -v`), and paths carry user names:
   personal data to count.
@@ -571,7 +574,9 @@ Read, never `insmod`: a module is kernel code.
       print("trailer magic present but the file is shorter than the 12-byte descriptor: truncated or not a module"); sys.exit(1)
   algo, hsh, id_type, signer_len, key_id_len, sig_len = struct.unpack(">BBBBB3xI", data[-len(MAGIC)-12:-len(MAGIC)])
   body_end = len(data) - len(MAGIC) - 12 - sig_len
-  if sig_len == 0 or body_end < 0:
+  if sig_len == 0:
+      print("descriptor says sig_len 0: no signature bytes, corrupt trailer, nothing written"); sys.exit(1)
+  if body_end < 0:
       print(f"descriptor says sig_len {sig_len} but only {len(data) - len(MAGIC) - 12} bytes precede it: corrupt trailer, nothing written"); sys.exit(1)
   print(f"algo {algo} hash {hsh} id_type {id_type} ({'PKCS#7' if id_type == 2 else 'other'}) signer_len {signer_len} key_id_len {key_id_len} sig_len {sig_len}; signed module bytes 0..{body_end}")
   if len(sys.argv) > 2 and id_type == 2:
@@ -579,10 +584,12 @@ Read, never `insmod`: a module is kernel code.
   ```
 
   Run it as `"$W/scripts/run.sh" python3 -I "$W/scripts/modsig.py" <ko> "$W/out/sig-<name>.p7s"`,
-  then `openssl pkcs7 -inform der -in "$W/out/sig-<name>.p7s" -noout -print | grep -E 'issuer:|serial:'`
-  names the signer by issuer and serial number: the kernel's `sign-file` writes
-  a detached CMS signature with no certificate inside, so `-print_certs` prints
-  nothing for a real module (tested on both forms, OpenSSL 3 and LibreSSL). The kernel tree's own `scripts/extract-module-sig.pl -s <ko>`
+  then `openssl cms -cmsout -inform der -in "$W/out/sig-<name>.p7s" -noout -print | grep -A1 -E 'issuer:|serialNumber:|subjectKeyIdentifier'`
+  names the signer by issuer and serial number, or by key identifier when the
+  module was signed with `sign-file -k`: the kernel's `sign-file` writes a
+  detached CMS signature with no certificate inside, so `-print_certs` prints
+  nothing for a real module, and `openssl pkcs7` cannot load the key-identifier
+  form at all (tested on both signature forms, OpenSSL 3 and LibreSSL). The kernel tree's own `scripts/extract-module-sig.pl -s <ko>`
   does the same (`-d` prints the descriptor, `-0` writes the unsigned module).
   The signature is checked only by a kernel holding the signing key: here it is
   "present, signer X", never "valid". No trailer is absence of a trailer, not

@@ -90,20 +90,32 @@ A saved capture is just a file. Read it; do not replay or fetch from it.
   `jq -r '.log.entries[<i>].response.content | select(.encoding == "base64") | .text' <file> | base64 -d > "$W/out/body-<name>-<i>.bin"`
   when the entry says `"encoding": "base64"` (an entry without it holds text,
   and this form writes an empty file for it: check the size). A `grpc-web-text`
-  body is base64 on top, each frame encoded and padded on its own, so decode it
-  chunk by chunk, `grep -oE '[A-Za-z0-9+/]+=*' <text> | while read -r c; do printf '%s' "$c" | base64 -d; done > "$W/out/body-<name>-<i>.bin"`
-  (`base64 -d` on the whole body stops at the first padding; tested). From a
+  body is base64 on top, each frame encoded and padded on its own: save the text
+  first, `jq -r '.log.entries[<i>].response.content.text' <file> > "$W/out/body-<name>-<i>.b64"`,
+  then decode it chunk by chunk into a different file,
+  `grep -oE '[A-Za-z0-9+/]+=*' "$W/out/body-<name>-<i>.b64" | while read -r c; do printf '%s' "$c" | base64 -d; done > "$W/out/body-<name>-<i>.bin"`
+  (`base64 -d` on the whole body fails at the first mid-stream padding and, on
+  macOS, writes nothing; a loop that reads and writes one name truncates its
+  input first; both tested). From a
   pcap, only a
   cleartext stream or one the operator's own key log decrypts
   (`-o tls.keylog_file:<file>`, a secret staged in the environment):
-  `"$W/scripts/run.sh" bash -c 'set -o pipefail; timeout 600 tshark -nr "$1" -Y grpc.message_data -T fields -e grpc.message_data | sed -n "$2p" | xxd -r -p > "$3"' _ <file> <n> "$W/out/body-<name>-<n>.bin"`
-  (the field is one message with its frame head already removed, decompressed
-  when flagged: Wireshark's dissector). A gRPC body from a HAR is framed: one
+  `"$W/scripts/run.sh" bash -c 'set -o pipefail; timeout 600 tshark -nr "$1" -Y grpc.message_data -T fields -e grpc.message_data | tr , "\n" | sed -n "$2p" | xxd -r -p > "$3"' _ <file> <n> "$W/out/body-<name>-<n>.bin"`
+  (one line per message once `tr` splits the comma-joined occurrences a packet can
+  carry, and a zero-length message adds no field, so `<n>` counts the lines, not
+  the stream's messages; the field is the message with its frame head already
+  removed, inflated when the frame is flagged compressed and `grpc-encoding` is
+  gzip or deflate, left compressed for other encodings: Wireshark's dissector
+  and the `tshark` man page). A gRPC body from a HAR is framed: one
   byte (0 plain, 1 compressed as `grpc-encoding` says), four bytes big-endian
   length, then the message, repeated. Take the first message by its declared
   length, `n=$((0x$(xxd -p -s 1 -l 4 <body>))); tail -c +6 <body> | head -c "$n" > <msg>`
-  (tested; `tail -c +6` alone is right only for a single-frame body), decompress
-  it if flagged, and walk on by 5 + n for the next frame. Decode without a
+  (tested; `tail -c +6` alone is right only for a single-frame body, and when `n`
+  is 0 the message is empty, written as `: > <msg>`, since `head -c 0` is an error
+  on macOS), decompress
+  it if flagged, and take the rest with `tail -c +$((6 + n)) <body> > <rest>` for
+  the next frame (`tail` counts from 1, so `5 + n` starts one byte early; tested).
+  Decode without a
   schema with `protoc --decode_raw < "$W/out/body-<name>-<i>.bin" > "$W/out/decode-<name>-<i>.txt"`:
   it prints field numbers and raw values, and a length-delimited field may be a
   string, bytes, a nested message or packed numbers, so names and types stay

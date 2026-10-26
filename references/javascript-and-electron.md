@@ -69,6 +69,8 @@ that blob instead of reading a script. Nothing about it is Electron.
   d = open(path, "rb").read()
   if len(d) < 52 or d[:4] != b"\x7fELF":
       print("not an ELF file (or shorter than an ELF header)"); sys.exit(1)
+  if d[4] not in (1, 2) or d[5] not in (1, 2):
+      print(f"EI_CLASS {d[4]} EI_DATA {d[5]}: not a valid ELF header (each must be 1 or 2)"); sys.exit(1)
   cls, end = d[4], "<" if d[5] == 1 else ">"
   try:
       if cls == 2:
@@ -96,7 +98,7 @@ that blob instead of reading a script. Nothing about it is Electron.
               namesz, descsz, ntype = struct.unpack(end + "III", d[p:p+12]); p += 12
               name = d[p:p+namesz].rstrip(b"\0"); p += (namesz + 3) & ~3
               desc = d[p:p+descsz]; p += (descsz + 3) & ~3
-              print(f"note owner {name!r} type {ntype} desc {descsz} bytes")
+              print(f"note owner {name[:64]!r}{'...' if len(name) > 64 else ''} type {ntype} desc {descsz} bytes")
               if name == want:
                   if len(desc) < descsz: print("note is truncated by the end of the file"); sys.exit(1)
                   open(out, "wb").write(desc); print("written", out); sys.exit(0)
@@ -108,14 +110,16 @@ that blob instead of reading a script. Nothing about it is Electron.
 - **Read the blob:** it begins with the magic bytes `20 da 43 01`, a flags word
   (bit 0: the experimental warning disabled; bit 1: a V8 heap snapshot instead
   of script source; bit 2: a code cache follows; bit 3: assets follow; bit 4:
-  `execArgv` follows) and one extension byte, then the script's path and its
-  source as length-prefixed strings, each an 8-byte little-endian length followed
-  by the bytes (Node 24's `node_sea.h`; later releases add fields after these, so
-  read the header of the Node that wrote the blob; checked on blobs from Node 25).
-  With bit 1 clear the source is plain text:
+  `execArgv` follows), then a header tail that grew by release and sits before the
+  path: nothing in Node 24.0, one `execArgv` extension byte in later Node 24 and
+  in Node 25, that byte plus a module-format byte in Node 26 (8, 9 or 10 bytes in
+  all; `node_sea.h` at the writer's tag is the source). Then the script's path and
+  its source as length-prefixed strings, each an 8-byte little-endian length
+  followed by the bytes (checked on blobs from Node 25). With bit 1 clear the
+  source is plain text:
   `strings -a -n 4 "$W/out/sea-<name>.blob" | head -3 | cut -c1-120 | cat -v`
-  shows the path (a short name such as `main.js` needs the `-n 4`) and the first
-  lines; copy the script out and read it as a
+  shows the path (a short name such as `main.js` needs the `-n 4`, and a printable
+  length byte can trail it, as in `main.js;`) and the first lines; copy the script out and read it as a
   bundle (next section). With bit 1 set the blob holds a serialised heap, not
   source: record that limit. A code cache is V8 bytecode for the same script,
   not extra logic; assets follow as name and bytes pairs, each named in the

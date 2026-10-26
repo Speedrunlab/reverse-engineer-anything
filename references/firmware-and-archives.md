@@ -30,6 +30,7 @@ then route each payload.
       if n < 1: raise ValueError
   except ValueError:
       print("block size must be a whole number of bytes, for example 4096"); sys.exit(1)
+  if not data: print("0 bytes: nothing to measure"); sys.exit(1)
   for i in range(0, len(data), n):
       b = data[i:i+n]; c = Counter(b)
       e = abs(sum(v/len(b) * math.log2(v/len(b)) for v in c.values()))
@@ -128,8 +129,10 @@ take an output directory, is the one exception, handled below.
   `Lib/importlib/_bootstrap_external.py` up to 3.13 and
   `Include/internal/pycore_magic_number.h` from 3.14) and the flags say whether
   the file is hash-based (PEP 552) or carries the source's mtime and size; a
-  file whose bytes 2 and 3 are not `0d 0a` has no 3.7+ header, and the helper
-  says so. The magic names
+  file whose bytes 2 and 3 are not `0d 0a`, whose magic is below 3392 (the 3.7a4
+  value that brought this header; earlier 3.x files carry 8 or 12 bytes) or whose
+  magic is 20121 or more (Python 2 and 1.x, 8 bytes; 2.7 is 62211) is not this
+  layout, and the helper says so. The magic names
   the format, not the interpreter that ran the program.
 
   ```python
@@ -137,9 +140,14 @@ take an output directory, is the one exception, handled below.
   import struct, sys
   h = open(sys.argv[1], "rb").read(16)
   if len(h) < 16 or h[2:4] != b"\r\n":
-      print(f"not a CPython 3.7+ pyc header ({len(h)} bytes read; bytes 2 and 3 must be 0d 0a): a headerless or older-format file"); sys.exit(1)
+      print(f"not a pyc header ({len(h)} bytes read; bytes 2 and 3 must be 0d 0a): a headerless file or not a pyc"); sys.exit(1)
   magic, flags = h[:4], struct.unpack("<I", h[4:8])[0]
-  print("magic", magic[:2].hex(), "(little-endian", struct.unpack("<H", magic[:2])[0], ") trailer", magic[2:].hex())
+  m = struct.unpack("<H", magic[:2])[0]
+  if m >= 20121:
+      print(f"magic {m}: a Python 2 or 1.x pyc (8-byte header, magic and mtime), not the 16-byte 3.7+ layout"); sys.exit(1)
+  if m < 3392:
+      print(f"magic {m}: a pyc older than CPython 3.7a4 (8- or 12-byte header, no flags), not the 16-byte 3.7+ layout"); sys.exit(1)
+  print("magic", magic[:2].hex(), "(little-endian", m, ") trailer", magic[2:].hex())
   if flags & 1:
       print("hash-based pyc; check_source" if flags & 2 else "hash-based pyc; not checked against source", "; source hash", h[8:16].hex())
   else:
@@ -222,9 +230,16 @@ take an output directory, is the one exception, handled below.
       if len(buf) != n: print(f"header truncated: {len(buf)} of {n} bytes present"); sys.exit(1)
   try:
       hdr = json.loads(buf)
-  except ValueError as e:
-      print(f"header is not JSON ({e}): not a safetensors file"); sys.exit(1)
+  except (ValueError, RecursionError) as e:
+      print(f"header is not JSON ({str(e)[:80]}): not a safetensors file"); sys.exit(1)
+  if not isinstance(hdr, dict): print(f"header is JSON but not an object ({type(hdr).__name__}): not a safetensors header"); sys.exit(1)
   meta = hdr.pop("__metadata__", None)
+  if meta is not None and not isinstance(meta, dict): print(f"__metadata__ is a {type(meta).__name__}, not an object: not a safetensors header"); sys.exit(1)
+  def ok(t):
+      o = t.get("data_offsets") if isinstance(t, dict) else None
+      return isinstance(t, dict) and "dtype" in t and isinstance(t.get("shape"), list) and isinstance(o, list) and len(o) == 2 and all(type(x) is int for x in o) and 0 <= o[0] <= o[1]
+  bad = [k for k, t in hdr.items() if not ok(t)]
+  if bad: print(f"{len(bad)} entries lack dtype, a shape list or an ascending two-integer data_offsets (first: {bad[0][:60]!r}): not a safetensors header"); sys.exit(1)
   print(f"header {n} bytes, {len(hdr)} tensors, metadata keys: {sorted(meta) if meta else 'none'}")
   for name, t in sorted(hdr.items()):
       print(f"{name}\t{t['dtype']}\t{t['shape']}\tbytes {t['data_offsets'][1]-t['data_offsets'][0]}")
@@ -257,12 +272,13 @@ take an output directory, is the one exception, handled below.
       return rd(n).decode("utf-8", "replace")
   SCALAR = {0: ("u8", "<B", 1), 1: ("i8", "<b", 1), 2: ("u16", "<H", 2), 3: ("i16", "<h", 2), 4: ("u32", "<I", 4), 5: ("i32", "<i", 4),
             6: ("f32", "<f", 4), 7: ("bool", "<?", 1), 10: ("u64", "<Q", 8), 11: ("i64", "<q", 8), 12: ("f64", "<d", 8)}
-  def value(t):
+  def value(t, depth=0):
       if t == 8: return "string", s()
       if t == 9:
+          if depth > 4: print("arrays nested more than 4 deep: corrupt header"); sys.exit(1)
           et, n = u32(), u64()
           if n > LIMIT: print(f"array length {n} over the limit: corrupt header"); sys.exit(1)
-          items = [value(et)[1] for _ in range(n)]
+          items = [value(et, depth + 1)[1] for _ in range(n)]
           return f"array[{n}] of {SCALAR[et][0] if et in SCALAR else 'string' if et == 8 else et}", items
       if t not in SCALAR: print(f"unknown metadata value type {t}: corrupt header or a newer format"); sys.exit(1)
       name, fmt, size = SCALAR[t]
@@ -285,9 +301,9 @@ take an output directory, is the one exception, handled below.
   ```
 
   A tensor type **number** is read against the writer's release: the integer
-  types in the 16 to 25 range were renumbered by a llama.cpp release in early
-  2024 before the table was pinned, so quote the number with the name your
-  reader gives it and the reader's version. `strings` still surfaces the text metadata quickly.
+  types `I8`, `I16` and `I32` moved up the list as IQ types were inserted ahead
+  of them, until a March 2024 llama.cpp commit pinned them at 24 to 26, so quote
+  the number with the name your reader gives it and the reader's version. `strings` still surfaces the text metadata quickly.
 - Do not load the weights "to inspect", that is running the model. Header and
   metadata answer identity and structure questions; behaviour is not inferable
   from declared architecture alone.
