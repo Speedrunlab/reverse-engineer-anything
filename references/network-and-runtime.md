@@ -90,8 +90,14 @@ A saved capture is just a file. Read it; do not replay or fetch from it.
   `jq -r '.log.entries[<i>].response.content | select(.encoding == "base64") | .text' <file> | base64 -d > "$W/out/body-<name>-<i>.bin"`
   when the entry says `"encoding": "base64"` (an entry without it holds text,
   and this form writes an empty file for it: check the size). A `grpc-web-text`
-  body is base64 on top, each frame encoded and padded on its own: save the text
-  first, `jq -r '.log.entries[<i>].response.content.text' <file> > "$W/out/body-<name>-<i>.b64"`,
+  body is base64 on top, each frame usually encoded and padded on its own (the
+  protocol does not promise the boundary; the loop below copes either way): save
+  the text first,
+  `jq -r '.log.entries[<i>].response.content | if .encoding == "base64" then (.text // empty | @base64d) else (.text // empty) end' <file> > "$W/out/body-<name>-<i>.b64"`
+  (Chrome records this content type with `"encoding": "base64"`, one more layer
+  over the body's own, and `@base64d` peels it; an entry without `text` leaves the
+  file empty, where a bare `.text` would write `null` and the loop would decode it
+  to three bytes: check the size, and that the file holds base64 text, not frames),
   then decode it chunk by chunk into a different file,
   `grep -oE '[A-Za-z0-9+/]+=*' "$W/out/body-<name>-<i>.b64" | while read -r c; do printf '%s' "$c" | base64 -d; done > "$W/out/body-<name>-<i>.bin"`
   (`base64 -d` on the whole body fails at the first mid-stream padding and, on
@@ -109,18 +115,18 @@ A saved capture is just a file. Read it; do not replay or fetch from it.
   and the `tshark` man page). A gRPC body from a HAR is framed: one
   byte (0 plain, 1 compressed as `grpc-encoding` says), four bytes big-endian
   length, then the message, repeated. Take the first message by its declared
-  length, `n=$((0x$(xxd -p -s 1 -l 4 <body>))); tail -c +6 <body> | head -c "$n" > <msg>`
-  (tested; `tail -c +6` alone is right only for a single-frame body, and when `n`
-  is 0 the message is empty, written as `: > <msg>`, since `head -c 0` is an error
-  on macOS), decompress
-  it if flagged, and take the rest with `tail -c +$((6 + n)) <body> > <rest>` for
-  the next frame (`tail` counts from 1, so `5 + n` starts one byte early; tested).
-  Decode without a
-  schema with `protoc --decode_raw < "$W/out/body-<name>-<i>.bin" > "$W/out/decode-<name>-<i>.txt"`:
+  length, `len=$((0x$(xxd -p -s 1 -l 4 <body>))); if [ "$len" -eq 0 ]; then : > <msg>; else tail -c +6 <body> | head -c "$len" > <msg>; fi`
+  (tested; `tail -c +6` alone is right only for a single-frame body, and the
+  branch is there because `head -c 0` is an error on macOS), decompress it if
+  flagged, and take the rest with `tail -c +$((6 + len)) <body> > <rest>` for the
+  next frame (`tail` counts from 1, so `5 + len` starts one byte early; tested).
+  Decode an unframed message without a schema (`<msg>` from the cut, a `tshark`
+  line's file, or the whole body when the content type is `application/x-protobuf`,
+  which has no frame) with `protoc --decode_raw < <msg> > "$W/out/decode-<name>-<i>.txt"`:
   it prints field numbers and raw values, and a length-delimited field may be a
   string, bytes, a nested message or packed numbers, so names and types stay
   inferences until the operator supplies the `.proto`
-  (`protoc --proto_path=<dir> --decode=<pkg.Message> <file>.proto < body.bin`;
+  (`protoc --proto_path=<dir> --decode=<pkg.Message> <file>.proto < <msg>`;
   the schema is theirs, never fetched). gRPC-web's last frame (flag bit `0x80`)
   is the trailer block, `grpc-status` and `grpc-message` as header text.
 - **Saved mitmproxy flows**: `mitmdump -n -r <flows> > "$W/out/flows-<name>.txt"`,

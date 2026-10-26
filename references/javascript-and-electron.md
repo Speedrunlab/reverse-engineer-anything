@@ -77,7 +77,7 @@ that blob instead of reading a script. Nothing about it is Electron.
           phoff, shoff = struct.unpack(end + "QQ", d[32:48]); phentsize, phnum, shentsize, shnum = struct.unpack(end + "HHHH", d[54:62])
       else:
           phoff, shoff = struct.unpack(end + "II", d[28:36]); phentsize, phnum, shentsize, shnum = struct.unpack(end + "HHHH", d[42:50])
-      ranges = []
+      ranges, shown = [], 0
       for i in range(phnum):
           ph = d[phoff + i * phentsize: phoff + (i + 1) * phentsize]
           if cls == 2:
@@ -96,11 +96,13 @@ that blob instead of reading a script. Nothing about it is Electron.
           p, stop = off, min(off + size, len(d))
           while p + 12 <= stop:
               namesz, descsz, ntype = struct.unpack(end + "III", d[p:p+12]); p += 12
-              name = d[p:p+namesz].rstrip(b"\0"); p += (namesz + 3) & ~3
-              desc = d[p:p+descsz]; p += (descsz + 3) & ~3
-              print(f"note owner {name[:64]!r}{'...' if len(name) > 64 else ''} type {ntype} desc {descsz} bytes")
+              name = d[p:min(p+namesz, stop)].rstrip(b"\0"); p += (namesz + 3) & ~3
+              desc = d[p:min(p+descsz, stop)]; p += (descsz + 3) & ~3
+              shown += 1
+              if shown <= 200: print(f"note owner {name[:64]!r}{'...' if len(name) > 64 else ''} type {ntype} desc {descsz} bytes")
+              elif shown == 201: print("(more notes not listed; the search goes on)")
               if name == want:
-                  if len(desc) < descsz: print("note is truncated by the end of the file"); sys.exit(1)
+                  if len(desc) < descsz: print("note is truncated by the end of its segment or the file"); sys.exit(1)
                   open(out, "wb").write(desc); print("written", out); sys.exit(0)
   except struct.error:
       print("truncated ELF: a header or table runs past the end of the file"); sys.exit(1)
@@ -111,12 +113,13 @@ that blob instead of reading a script. Nothing about it is Electron.
   (bit 0: the experimental warning disabled; bit 1: a V8 heap snapshot instead
   of script source; bit 2: a code cache follows; bit 3: assets follow; bit 4:
   `execArgv` follows), then a header tail that grew by release and sits before the
-  path: nothing in Node 24.0, one `execArgv` extension byte in later Node 24 and
-  in Node 25, that byte plus a module-format byte in Node 26 (8, 9 or 10 bytes in
-  all; `node_sea.h` at the writer's tag is the source). Then the script's path and
-  its source as length-prefixed strings, each an 8-byte little-endian length
-  followed by the bytes (checked on blobs from Node 25). With bit 1 clear the
-  source is plain text:
+  path: nothing before Node 24.7, one `execArgv` extension byte from 24.7 to 25.6,
+  that byte plus a module-format byte from 25.7 on, Node 26 included (8, 9 or 10
+  bytes in all; `node_sea.h` at the writer's tag is the source, read at 24.6.0,
+  24.7.0, 25.6.1 and 25.7.0). Then the script's path and its source as
+  length-prefixed strings, each a `size_t` length, 8 bytes little-endian from a
+  64-bit little-endian writer, followed by the bytes (checked on blobs from Node
+  25.5.0). With bit 1 clear the source is plain text:
   `strings -a -n 4 "$W/out/sea-<name>.blob" | head -3 | cut -c1-120 | cat -v`
   shows the path (a short name such as `main.js` needs the `-n 4`, and a printable
   length byte can trail it, as in `main.js;`) and the first lines; copy the script out and read it as a

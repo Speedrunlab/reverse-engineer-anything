@@ -107,10 +107,10 @@ give every claim one outcome: passed, failed, not applicable (the claim does not
 apply to this build) or could not be tested (the input or the environment was
 not available), reporting the count of each against the claim total, with the
 vectors kept as evidence in `$W/out/verify-<name>.txt` (free of recorded
-credentials). Passed and failed are results; not applicable is closed (the claim
-does not apply to this build); could not be tested stays open. A full pass means
-every claim passed or was not applicable, with none left could-not-be-tested; it
-covers the declared claims only, never equivalence; a behaviour nobody wrote down stays
+credentials). Passed and failed are results; not applicable is closed; could not
+be tested stays open. A full pass means every claim passed or was not applicable,
+with none left could-not-be-tested; it covers the declared claims only, never
+equivalence; a behaviour nobody wrote down stays
 unknown, and a claim that needed a live observation to state is marked so.
 
 ## Final verification pass

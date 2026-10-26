@@ -2,6 +2,66 @@
 
 Reverse Engineer Anything. Newest first.
 
+## v1.18.0 (26 Oct 2026)
+
+Hardening round 16, on v1.17.0's own changes only: two fresh readers, proven
+findings only. The fixes:
+
+- Node.js single executables: the header tail is 8 bytes before Node 24.7, 9
+  from 24.7 to 25.6 and 10 from 25.7 on (`node_sea.h` read at 24.6.0, 24.7.0,
+  25.6.1 and 25.7.0); v1.17.0's "later Node 24" and "Node 25" were wrong at
+  both boundaries, and only a 25.5.0 blob had been checked. The string lengths
+  are `size_t`, 8 bytes on a 64-bit little-endian writer.
+- Protobuf and gRPC: Chrome records a `grpc-web-text` body in a HAR with
+  `"encoding": "base64"`, one more layer over the body's own, so the published
+  save wrote base64 text where frames were expected, exit 0 and no warning
+  (reproduced on a HAR a reviewer recorded from Chrome); the `jq` save now
+  peels that layer with `@base64d` when the entry says so and ends in
+  `// empty` (an entry without `text` had written `null`, which the loop
+  decoded to three bytes); the frame cut is one `if` line with the
+  empty-message branch (the one-liner printed an error and logged `[exit 1]`
+  on a zero-length frame); the frame length is `len`, beside the `<n>` line
+  index; `protoc --decode_raw` reads the unframed `<msg>`, not the framed body
+  file; the padding-per-frame sentence says the protocol does not promise it.
+- Kernel modules: the signer line prints the `signerInfos` head with `sed`;
+  the key identifier prints as hex rows of 15 bytes, so `grep -A1` had shown
+  15 of 20 with nothing to say so. The `-print_certs` remark names its
+  command, `openssl pkcs7`.
+- `.ips`: `llvm-symbolizer` takes the address as the file was linked (the
+  offset for a shared object or PIE, link base plus offset for a non-PIE
+  executable); "module-relative offset" held only for files linked at 0, and
+  `0x<imageOffset>` invited a decimal after the prefix. Apple's tools do not
+  ship the tool; Homebrew or a release LLVM does.
+- One function by name: `/usr/bin/objdump` on macOS is the same LLVM binary and
+  rejects the GNU `--disassemble=` spelling.
+- Evidence: the full-pass paragraph defines "not applicable" once.
+- Helpers: `safetensors-header.py` reads the header as UTF-8 only (UTF-16 and
+  BOM-prefixed headers had passed; the reference reader refuses them), prints
+  a hostile name instead of dying on it (a lone surrogate escape gave a
+  traceback after the header line), requires a string dtype and a shape of
+  whole numbers (a deeply nested shape passed the checks and gave a traceback
+  in the print) and caps names at 120 characters; `pyc-header.py` tells a short
+  file from a bad trailer (a 10-byte prefix was told its bytes 2 and 3 were
+  wrong) and names the Python 1.5 to 2.7 band exactly; `gguf-header.py`
+  refuses the fifth nesting level, as "more than 4 deep" says (the fifth had
+  passed), and caps keys at 120 characters; `modsig.py` refuses a `sig_len`
+  that leaves no module, as the kernel does, and says when a non-PKCS#7
+  `id_type` writes nothing; `elf-note.py` never reads a note past its segment
+  or section and lists at most 200 notes.
+
+Tested here: a Chrome HAR with the double base64 layer (recorded by a reviewer
+with Playwright) and a hand-built HAR without `encoding`, with and without
+`text`; the `sed` signer line on issuer-and-serial and key-identifier
+signatures (OpenSSL 3 and LibreSSL); `llvm-symbolizer` on an ET_DYN and an
+ET_EXEC built with `yaml2obj` (offset, link base plus offset, a runtime
+address); the `if` cut and `6 + len` on zero-length, one-, two- and three-frame
+bodies; `/usr/bin/objdump` with both spellings; the helpers on the good
+fixtures, the earlier edge cases and the new ones (a 100,000-deep shape, a lone
+surrogate, UTF-16 and BOM headers, a 10-byte pyc prefix, four- and five-level
+GGUF arrays, a `sig_len` equal to the module, a note straddling its segment).
+Doc-checked, not run: `node_sea.h` at the four tags, `protoc --decode_raw`
+(absent here). Round 17 on this version's own changes has not run.
+
 ## v1.17.0 (26 Oct 2026)
 
 Hardening round 15, on v1.16.0's own changes only: two fresh readers (an
