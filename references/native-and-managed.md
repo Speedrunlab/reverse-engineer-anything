@@ -594,42 +594,42 @@ Read, never `insmod`: a module is kernel code.
 
   Run it as `"$W/scripts/run.sh" python3 -I "$W/scripts/modsig.py" <ko> "$W/out/sig-<name>.p7s"`,
   then the signer line,
-  `"$W/scripts/run.sh" env LC_ALL=C bash -c 'set -o pipefail; openssl cms -cmsout -inform der -in "$1" -noout -print | sed -n "2p;/^ *signerInfos:/,/^ *digestAlgorithm:/p" | cat -v | cut -c1-200' _ "$W/out/sig-<name>.p7s"`,
-  prints the content type and the first signer: by issuer and serial number, or
-  by key identifier when the module was signed with `sign-file -k` (hex rows of
-  15 bytes, so a `grep -A1` had shown 15 of its 20). Read its shape before its
-  words, because every string in it is the sample's. Line 1 must read
-  `contentType: pkcs7-signedData`; any other type (`undefined`, enveloped,
-  digested) with signer-looking lines under it is a string field carrying fake
-  print lines, which LibreSSL prints with their newlines, so report the shape and
-  read no signer from it. Then exactly one `signerInfos:` line, and a
-  `serialNumber:` or a hex row before `digestAlgorithm:`; two `signerInfos:`
-  lines, or none of those rows, is forged or cut; `signerInfos:` followed by
-  `<EMPTY>` is a SignedData with no signer; an empty result with exit 0 is a CMS
-  with no `signerInfos` at all. `sign-file` writes exactly one signer; for a CMS
-  with more signers, save the whole print,
-  `"$W/scripts/run.sh" env LC_ALL=C bash -c 'openssl cms -cmsout -inform der -in "$1" -noout -print > "$2"' _ "$W/out/sig-<name>.p7s" "$W/out/cms-<name>.txt"`,
-  count its `digestAlgorithm:` lines for the signer count and read it with
-  targeted searches through `cat -v`. The `^ *` anchors keep a one-line issuer
-  name that contains the words from ending the range early; `LC_ALL=C` around
-  the whole shell keeps BSD `sed` from failing on a lone high byte LibreSSL
-  prints, and makes `cat -v` show every byte OpenSSL 3.2 and later pass raw,
-  such as a right-to-left override (3.0, 3.1 and LibreSSL escape them); `cut`
-  bounds a line a megabyte-long issuer would stretch. OpenSSL 3.2.0 to 3.2.4,
-  3.3.0 to 3.3.3 and 3.4.0 to 3.4.1 print a newline inside a name raw by their
-  defaults, which lets a forged issuer hide the real serial inside the range, so
-  on OpenSSL add `-nameopt esc_ctrl,esc_msb,utf8,sep_comma_plus_space` before
-  `-print` (LibreSSL does not take the option; the windows come from
-  `apps/lib/apps.c` at each tag and the 3.4.2 change note, the behaviour from
-  3.0.17 and 3.4.1 built from the release tarballs); `pipefail` keeps `openssl`'s
-  failure as the exit status, where a bare pipe reported the last stage's 0 for an
-  unreadable file. The
-  kernel's `sign-file` writes a detached CMS signature with no certificate
-  inside, so `openssl pkcs7 -print_certs` prints nothing for a real module, and
+  `"$W/scripts/run.sh" env LC_ALL=C bash -c 'set -o pipefail; no=; openssl cms -help 2>&1 | grep -q -- -nameopt && no="-nameopt esc_ctrl,esc_msb,utf8,sep_comma_plus_space"; openssl cms -cmsout -inform der -in "$1" -noout $no -print | sed -n "2p;/^ *signerInfos:/,/^ *digestAlgorithm:/p" | cat -v | cut -c1-200 | awk "NR<=40"' _ "$W/out/sig-<name>.p7s"`,
+  prints the content type and the first signer block: by issuer and serial
+  number, or by key identifier when the module was signed with `sign-file -k`
+  (hex rows of 15 bytes, so a `grep -A1` had shown 15 of its 20). Then always
+  save the whole print and count it,
+  `"$W/scripts/run.sh" env LC_ALL=C bash -c 'no=; openssl cms -help 2>&1 | grep -q -- -nameopt && no="-nameopt esc_ctrl,esc_msb,utf8,sep_comma_plus_space"; openssl cms -cmsout -inform der -in "$1" -noout $no -print > "$2"; grep -c "^ *signerInfos:" "$2"; grep -c "^ *digestAlgorithm:" "$2"' _ "$W/out/sig-<name>.p7s" "$W/out/cms-<name>.txt"`.
+  Read the shape before the words, in this order, because every string in the
+  output is the sample's: a non-zero exit voids the printed lines; line 1 must
+  name `pkcs7-signedData` (any other type with signer-looking lines under it is
+  a string field carrying fake print lines); `signerInfos:` followed by
+  `<EMPTY>` is a SignedData with no signer; the two counts must both be 1,
+  which is `sign-file`'s shape (a second `digestAlgorithm:` is a second signer
+  the block never shows, a second `signerInfos:` is a forged string field; either
+  way report the counts and read no signer from the block); only then does the
+  block name the signer. A 200-character line was cut, 40 lines is the most it
+  prints, and the saved file is read with `LC_ALL=C grep` and `cat -v`, never
+  whole. The `^ *` anchors keep a one-line issuer name that contains the words
+  from ending the range early; `LC_ALL=C` around the whole shell keeps BSD `sed`
+  from failing on a lone high byte some builds print, and makes `cat -v` show
+  every byte, such as a right-to-left override; the `-nameopt`, added when the
+  build takes it (OpenSSL does, LibreSSL does not), makes OpenSSL escape a
+  newline inside a name or a string field, which 3.2.0 to 3.2.4, 3.3.0 to 3.3.3
+  and 3.4.0 to 3.4.1 print raw by default and which let a forged issuer hide the
+  real serial inside the range (`apps/lib/apps.c` at each tag and the 3.4.2
+  change note; 3.0.17 and 3.4.1 run from the release tarballs); fake print lines
+  in a string field print raw on LibreSSL and on OpenSSL before 3.2.5, 3.3.4 and
+  3.4.2 without the option, which is why the counts come from the whole print;
+  `pipefail` keeps `openssl`'s failure as the exit status, where a bare pipe
+  reported the last stage's 0 for an unreadable file. The kernel's `sign-file`
+  writes a detached CMS signature with no certificate inside, so
+  `openssl pkcs7 -print_certs` prints nothing for a real module, and
   `openssl pkcs7` cannot load the key-identifier form at all (tested on both
-  signature forms, a two-signer CMS, hostile issuers, forged string fields in a
-  signed, an unsigned-type and an enveloped CMS, a lone high byte, and unreadable
-  files, OpenSSL 3.6 and LibreSSL 3.3).
+  signature forms, two- and three-signer CMS, hostile issuers with and without a
+  newline, forged string fields in a signed CMS and in CMS of other types, a lone
+  high byte, a 3 MB key identifier and unreadable files, on LibreSSL 3.3 and
+  OpenSSL 3.0.17, 3.4.1 and 3.6.4). The kernel tree's own `scripts/extract-module-sig.pl -s <ko>`
   does the same (`-d` prints the descriptor, `-0` writes the unsigned module).
   The signature is checked only by a kernel holding the signing key: here it is
   "present, signer X", never "valid". No trailer is absence of a trailer, not

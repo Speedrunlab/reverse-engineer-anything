@@ -2,6 +2,53 @@
 
 Reverse Engineer Anything. Newest first.
 
+## v1.23.0 (26 Oct 2026)
+
+Hardening round 21, on v1.22.0's own changes only: two fresh readers, proven
+findings only. No high. The fixes:
+
+- Kernel modules: the signer line and the whole-print save add `-nameopt
+  esc_ctrl,esc_msb,utf8,sep_comma_plus_space` themselves when the build takes
+  it (OpenSSL does, LibreSSL does not), so the one command an agent copies is
+  the safe form on OpenSSL 3.2.0 to 3.4.1, where v1.22.0 left the option as
+  prose twenty lines below the command (a forged issuer with a newline passed
+  every shape rule on 3.4.1); the whole print is always saved and its
+  `signerInfos:` and `digestAlgorithm:` lines always counted, because a second
+  signer never shows in the block (a two-signer CMS had read as one clean
+  signer) and the count is the only cue; the saved file is read under
+  `LC_ALL=C` again (v1.22.0 had dropped it from the read); the line prints 40
+  rows at most (a 3 MB key identifier had printed 200,010 rows) and says a
+  200-character line was cut; the rules say a non-zero exit voids the printed
+  lines and that the `<EMPTY>` case wins; the raw printing of fake lines is
+  attributed to LibreSSL and OpenSSL before 3.2.5, 3.3.4 and 3.4.2, not
+  LibreSSL alone; the sentence about the kernel's own `extract-module-sig.pl`
+  has its subject back (v1.22.0's rewrite had left "does the same" dangling).
+- Protobuf and gRPC: the walk reads each frame's flag byte (compressed or
+  trailer) and reports bytes left after the cut's exit as a cut frame; the
+  `tshark` schema decode has its full name.
+- Helpers: `gguf-header.py` bounds nested arrays at four items per level and
+  quotes strings inside a list (v1.22.0's rendering joined every element of
+  every nested list, 7 MB from a 2 MB file, and lost item boundaries);
+  `elf-note.py` lists a note before judging its overrun, prints the cut
+  summary before every exit and bounds its closing verdict to the notes it
+  could read; `safetensors-header.py` escapes a quote in the bad entry's name
+  and lists at most 20 metadata keys (300,000 keys had printed a 3 MB line).
+- CHANGELOG: v1.22.0's correction of v1.21.0 was itself wrong, "compat flags"
+  was right for 3.0 and 3.1 (`apps/cms.c` passes a null print context by
+  default, so the library's compat flags apply); the `elf-note.py` summary is
+  one line in total, not one per segment.
+
+Tested here: the adaptive signer line and the save-and-count command on
+LibreSSL 3.3, OpenSSL 3.0.17, 3.4.1 and 3.6.4 (good, key-identifier, two- and
+three-signer, forged issuer with a newline, forged string fields, enveloped,
+3 MB key identifier, garbage and missing files; the real serial on 3.4.1 with
+the option); the counts on one, two and three signers and on a forged
+attribute; the nested GGUF floods (2 MB and 3 x 1 MB); the ELF cut cases with
+the listing and summary order; the quote and 300,000-key safetensors files;
+the helpers on every earlier fixture. Doc-checked, not run: OpenSSL 3.2.x and
+3.3.x (source at each tag), `protoc`, `tshark`. Round 22 on this version's own
+changes has not run.
+
 ## v1.22.0 (26 Oct 2026)
 
 Hardening round 20, on v1.21.0's own changes only: two fresh readers, proven
@@ -29,8 +76,8 @@ findings only. No high. The fixes:
   names per frame, `<rest>` is the next `<body>` and never its own name, stop at
   an empty `<rest>` or the cut's exit 1, a stale `<msg>` is not a message); a
   `tshark` line's schema decode has a name.
-- Helpers: `elf-note.py` prints one summary line for every segment or section
-  holding a note that runs past its end, with the count and first offset, and
+- Helpers: `elf-note.py` prints one summary line in total for the segments or
+  sections holding a note that runs past its end, with the count and first offset, and
   counts a descriptor past its segment too (v1.21.0 printed one line per cut
   segment, so an ELF with 65,535 program headers pointing at one cut note put
   6.6 MB on stdout; a descriptor overrun had been skipped silently);
@@ -41,7 +88,7 @@ findings only. No high. The fixes:
   prints the metadata key count instead of the word "none" (a key named `none`
   had read as no metadata).
 - CHANGELOG: v1.21.0's `cat -v` note said 0x80 to 0x9f where 0xad is marked
-  too, and "compat flags" where "defaults" is what the 3.0 and 3.1 sources say.
+  too.
 
 Tested here: the signer line on a CMS of unknown type, an enveloped and a
 digested CMS each carrying fake print lines, on a valid signature with a lone
@@ -52,8 +99,8 @@ and on every earlier CMS fixture; a forged issuer with a newline on OpenSSL
 the wanted note; nested and empty GGUF arrays; an empty tensor name in the
 bad-entry message and a metadata key named `none`; the helpers on every
 earlier fixture. Doc-checked, not run: the 3.2.x and 3.3.x name defaults
-(source at each tag), `protoc`. Round 21 on this version's own changes has
-not run.
+(source at each tag), `protoc`. Round 21 on this version's own changes ran the
+same day; its findings are v1.23.0.
 
 ## v1.21.0 (26 Oct 2026)
 
@@ -69,7 +116,7 @@ findings only. No high. The fixes:
   a CMS with no `signerInfos`). `cat -v` runs under `LC_ALL=C`, since BSD
   `cat -v` in a UTF-8 locale marks only some high bytes (0x80 to 0x9f and 0xad
   here); "OpenSSL 3" became "OpenSSL 3.2 and later", because 3.0 and 3.1
-  printed names with defaults that escape control bytes. The whole-print save has its command.
+  printed names with the compat flags, which escape control bytes. The whole-print save has its command.
 - Protobuf and gRPC: the next-frame command reads the length itself
   (`tail -c +$((6 + 0x$(xxd ...)))`), because every command runs in a fresh
   shell where the cut's `len` is unset and `6 + len` was 6, which put the next

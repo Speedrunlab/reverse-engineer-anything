@@ -126,15 +126,17 @@ A saved capture is just a file. Read it; do not replay or fetch from it.
   fresh shell, where `len` is unset and `6 + len` would be 6; `tail` counts from 1,
   so `5 +` the length starts one byte early; tested). Each frame gets fresh
   `<msg>` and `<rest>` names and `<rest>` is the next `<body>` (never the same
-  name as the body it reads, which truncates it to nothing); the walk ends at an
-  empty `<rest>` or at the cut's exit 1, and a stale `<msg>` from the frame before
-  is not one more message.
+  name as the body it reads, which truncates it to nothing); read each frame's
+  flag byte first, `xxd -p -l 1 <body>` (`01` compressed, `80` a trailer, which
+  is status text, not a message); the walk ends at an empty `<rest>` or at the
+  cut's exit 1, and bytes left over after that exit are reported as a cut frame,
+  not decoded.
   Decode an unframed message without a schema (`<msg>` from the cut, a `tshark`
   line's file, or the whole body when the content type is `application/x-protobuf`,
   which has no frame) with `protoc --decode_raw < <msg> > "$W/out/decode-<name>-<i>-<k>.txt"`,
   one file per frame, `<k>` counting from 1 (a `tshark` line's files are
-  `decode-<name>-<n>.txt` and `-schema.txt` beside it, an unframed body takes
-  `<k>` 1):
+  `decode-<name>-<n>.txt` and `decode-<name>-<n>-schema.txt`, an unframed body
+  takes `<k>` 1):
   it prints field numbers and raw values, and a length-delimited field may be a
   string, bytes, a nested message or packed numbers, so names and types stay
   inferences until the operator supplies the `.proto`

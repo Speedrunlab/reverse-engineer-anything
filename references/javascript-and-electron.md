@@ -100,18 +100,20 @@ that blob instead of reading a script. Nothing about it is Electron.
               if p + namesz > stop: cut += 1; first_cut = off if first_cut is None else first_cut; break
               name = d[p:p+namesz].rstrip(b"\0"); p += (namesz + 3) & ~3
               desc = d[p:min(p+descsz, stop)]; p += (descsz + 3) & ~3
-              if len(desc) < descsz and name != want: cut += 1; first_cut = off if first_cut is None else first_cut; break
               shown += 1
               if shown <= 200: print(f"note owner {name[:64]!r}{'...' if len(name) > 64 else ''} type {ntype} desc {descsz} bytes")
               elif shown == 201: print("(more notes not listed; the search goes on)")
+              if len(desc) < descsz and name != want: cut += 1; first_cut = off if first_cut is None else first_cut; break
               if name == want:
-                  if len(desc) < descsz: print("note is truncated by the end of its segment or the file"); sys.exit(1)
+                  if len(desc) < descsz:
+                      if cut: print(cut_line())
+                      print("note is truncated by the end of its segment or the file"); sys.exit(1)
                   if cut: print(cut_line())
                   open(out, "wb").write(desc); print("written", out); sys.exit(0)
   except struct.error:
       print("truncated ELF: a header or table runs past the end of the file"); sys.exit(1)
   if cut: print(cut_line())
-  print("no note with that owner"); sys.exit(1)
+  print("no note with that owner" + (" among the notes that could be read" if cut else "")); sys.exit(1)
   ```
 
 - **Read the blob:** it begins with the magic bytes `20 da 43 01`, a flags word
