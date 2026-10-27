@@ -594,23 +594,28 @@ Read, never `insmod`: a module is kernel code.
 
   Run it as `"$W/scripts/run.sh" python3 -I "$W/scripts/modsig.py" <ko> "$W/out/sig-<name>.p7s"`,
   then the signer line,
-  `"$W/scripts/run.sh" env LC_ALL=C bash -c 'set -o pipefail; no=; openssl cms -help 2>&1 | grep -q -- -nameopt && no="-nameopt esc_ctrl,esc_msb,utf8,sep_comma_plus_space"; openssl cms -cmsout -inform der -in "$1" -noout $no -print | sed -n "2p;/^ *signerInfos:/,/^ *digestAlgorithm:/p" | cat -v | cut -c1-200 | awk "NR<=40"' _ "$W/out/sig-<name>.p7s"`,
+  `"$W/scripts/run.sh" env LC_ALL=C bash -c 'no=; openssl cms -help 2>&1 | grep -q -- -nameopt && no="-nameopt esc_ctrl,esc_msb,utf8,sep_comma_plus_space"; set -o pipefail; openssl cms -cmsout -inform der -in "$1" -noout $no -print | sed -n "2p;/^ *signerInfos:/,/^ *digestAlgorithm:/p" | cat -v | cut -c1-200 | awk "NR<=40"' _ "$W/out/sig-<name>.p7s"`,
   prints the content type and the first signer block: by issuer and serial
   number, or by key identifier when the module was signed with `sign-file -k`
-  (hex rows of 15 bytes, so a `grep -A1` had shown 15 of its 20). Then always
-  save the whole print and count it,
-  `"$W/scripts/run.sh" env LC_ALL=C bash -c 'no=; openssl cms -help 2>&1 | grep -q -- -nameopt && no="-nameopt esc_ctrl,esc_msb,utf8,sep_comma_plus_space"; openssl cms -cmsout -inform der -in "$1" -noout $no -print > "$2"; grep -c "^ *signerInfos:" "$2"; grep -c "^ *digestAlgorithm:" "$2"' _ "$W/out/sig-<name>.p7s" "$W/out/cms-<name>.txt"`.
+  (hex rows of 15 bytes; the range shows them all). Then always
+  save the whole print, count it and keep its last line,
+  `"$W/scripts/run.sh" env LC_ALL=C bash -c 'no=; openssl cms -help 2>&1 | grep -q -- -nameopt && no="-nameopt esc_ctrl,esc_msb,utf8,sep_comma_plus_space"; openssl cms -cmsout -inform der -in "$1" -noout $no -print > "$2" || exit; grep -c "^ *signerInfos:" "$2"; grep -c "^ *digestAlgorithm:" "$2"; tail -n 1 "$2" | cut -c1-80 | cat -v; :' _ "$W/out/sig-<name>.p7s" "$W/out/cms-<name>.txt"`.
   Read the shape before the words, in this order, because every string in the
-  output is the sample's: a non-zero exit voids the printed lines; line 1 must
-  name `pkcs7-signedData` (any other type with signer-looking lines under it is
-  a string field carrying fake print lines); `signerInfos:` followed by
-  `<EMPTY>` is a SignedData with no signer; the two counts must both be 1,
-  which is `sign-file`'s shape (a second `digestAlgorithm:` is a second signer
-  the block never shows, a second `signerInfos:` is a forged string field; either
-  way report the counts and read no signer from the block); only then does the
-  block name the signer. A 200-character line was cut, 40 lines is the most it
-  prints, and the saved file is read with `LC_ALL=C grep` and `cat -v`, never
-  whole. The `^ *` anchors keep a one-line issuer name that contains the words
+  output is the sample's: a non-zero exit from the signer line voids its printed
+  lines, and a non-zero exit from the save is `openssl` failing on the file; line
+  1 must name `pkcs7-signedData` (any other type with signer-looking lines under
+  it is a string field carrying fake print lines); the saved print's last line
+  must be `<ABSENT>` or `<EMPTY>`, because OpenSSL stops printing at a value it
+  cannot print and still exits 0, so any other last line (a one-byte edit gives
+  `parameter: REAL:`) is a cut print that can hide a later signer; the two counts
+  must both be 1, which is `sign-file`'s shape (a second `digestAlgorithm:` is a
+  second signer the block never shows, a second `signerInfos:` is a forged string
+  field; either way report the counts and read no signer from the block);
+  `signerInfos:` followed by `<EMPTY>` with the counts 1 and 0 is a SignedData
+  with no signer, and with any other counts a forged field; only then does the
+  block name the signer. A line longer than 200 characters and output beyond 40
+  lines are cut, and the saved file is read with `LC_ALL=C grep` and `cat -v`,
+  never whole. The `^ *` anchors keep a one-line issuer name that contains the words
   from ending the range early; `LC_ALL=C` around the whole shell keeps BSD `sed`
   from failing on a lone high byte some builds print, and makes `cat -v` show
   every byte, such as a right-to-left override; the `-nameopt`, added when the
@@ -630,7 +635,8 @@ Read, never `insmod`: a module is kernel code.
   newline, forged string fields in a signed CMS and in CMS of other types, a lone
   high byte, a 3 MB key identifier and unreadable files, on LibreSSL 3.3 and
   OpenSSL 3.0.17, 3.4.1 and 3.6.4). The kernel tree's own `scripts/extract-module-sig.pl -s <ko>`
-  does the same (`-d` prints the descriptor, `-0` writes the unsigned module).
+  extracts the same PKCS#7 that `modsig.py` writes (`-d` prints the descriptor,
+  `-0` writes the unsigned module).
   The signature is checked only by a kernel holding the signing key: here it is
   "present, signer X", never "valid". No trailer is absence of a trailer, not
   proof the module is unsigned in another package.

@@ -220,7 +220,8 @@ take an output directory, is the one exception, handled below.
   length over the format's 100 MB cap, or longer than the file, stops it before
   anything is read; in this helper and the GGUF one a backslash in a name, dtype,
   key or value prints doubled and a control character as its escape, so a real
-  newline and a literal `\n` print differently):
+  newline and a literal `\n` print differently, and the lists stop at 20 metadata
+  keys and 4 items per array level with the rest counted):
 
   ```python
   # safetensors-header.py <file>: print the JSON header (tensor names, dtypes, shapes, __metadata__); the weights are never read
@@ -289,7 +290,7 @@ take an output directory, is the one exception, handled below.
             6: ("f32", "<f", 4), 7: ("bool", "<?", 1), 10: ("u64", "<Q", 8), 11: ("i64", "<q", 8), 12: ("f64", "<d", 8)}
   def item(x, n=40):  # a nested array shows at most 4 items per level, strings quoted so boundaries stay visible
       if isinstance(x, list): return "[" + ", ".join(item(y, n) for y in x[:4]) + (f", ...({len(x)} items)" if len(x) > 4 else "") + "]"
-      return "'" + show(x, n) + "'" if isinstance(x, str) else show(x, n)
+      return "'" + show(x, n).replace(chr(39), chr(92) + chr(39)) + "'" if isinstance(x, str) else show(x, n)
   def value(t, depth=0):
       if t == 8: return "string", s()
       if t == 9:

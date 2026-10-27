@@ -2,6 +2,52 @@
 
 Reverse Engineer Anything. Newest first.
 
+## v1.24.0 (27 Oct 2026)
+
+Hardening round 22, on v1.23.0's own changes only: two fresh readers, proven
+findings only. No high. The fixes:
+
+- Kernel modules: the save command keeps `openssl`'s own exit (`|| exit`) and
+  prints the saved print's last line beside the two counts, and the rules
+  require that line to be `<ABSENT>` or `<EMPTY>`: OpenSSL stops printing at a
+  value it cannot print and still exits 0, so a one-byte edit in a two-signer
+  CMS (a NULL parameter turned into a zero-length REAL) cut the print after the
+  decoy first signer, counts 1 and 1, and the trusted second signer never
+  appeared (on 3.0.17, 3.4.1 and 3.6.4; LibreSSL exits 4 instead). The
+  `<EMPTY>` rule now comes after the counts and needs counts 1 and 0: v1.23.0
+  read it first, so a forged `signerInfos:` `<EMPTY>` in a string field made a
+  signed module read as "no signer" on LibreSSL. The exit that voids is the
+  signer line's; the save's exit is `openssl` failing on the file (v1.23.0's
+  save ended on `grep -c`, whose exit 1 meant only a zero count).
+- Kernel modules, smaller: the option detection runs before `pipefail` in the
+  signer line, as it already did in the save (a build whose `cms -help` exits
+  non-zero would have dropped the option there alone); the kernel's
+  `extract-module-sig.pl` is said to extract the same PKCS#7 the helper writes;
+  two fragments reworded.
+- Protobuf and gRPC: every flag value has a reading (`00`, `01`, `80`, `81`;
+  anything else is not a gRPC frame).
+- Helpers: `gguf-header.py` escapes a quote inside a list item, as the
+  safetensors helper does (one string `x', 'y` had printed like two);
+  `elf-note.py` counts a note range that lies or runs past the end of the file,
+  and 1 to 11 leftover bytes at a note boundary, as cut (a truncated file had
+  ended in the unbounded "no note with that owner" that v1.23.0 set out to
+  bound) and marks a note that runs past its segment in its own listing line;
+  the prose names the 20-key and 4-item caps.
+
+Tested here: the save command and the rules on the one-byte-edited two-signer
+CMS and its clean twin, on a forged `<EMPTY>` field, on zero-signer, forged,
+good, key-identifier and garbage files, on LibreSSL 3.3 and OpenSSL 3.0.17,
+3.4.1 and 3.6.4 (the last line of every complete print is `<ABSENT>` or
+`<EMPTY>` on all four); the quoted-item GGUF files; the past-end and leftover
+ELFs and every prefix of a good ELF; the frame walk with each flag value; the
+helpers on every earlier fixture. Doc-checked, not run: the kernel's
+`pkcs7_validate_trust` (any one trusted signer chain admits the module),
+`protoc`, `tshark`.
+
+Round 22 was the last review round, by decision on 26 Oct after rounds 17 to
+22 each returned two to five proven mediums; v1.24.0's own changes are tested
+here and not reviewed by a further round.
+
 ## v1.23.0 (26 Oct 2026)
 
 Hardening round 21, on v1.22.0's own changes only: two fresh readers, proven
@@ -15,7 +61,7 @@ findings only. No high. The fixes:
   every shape rule on 3.4.1); the whole print is always saved and its
   `signerInfos:` and `digestAlgorithm:` lines always counted, because a second
   signer never shows in the block (a two-signer CMS had read as one clean
-  signer) and the count is the only cue; the saved file is read under
+  signer) and the counts are the cue; the saved file is read under
   `LC_ALL=C` again (v1.22.0 had dropped it from the read); the line prints 40
   rows at most (a 3 MB key identifier had printed 200,010 rows) and says a
   200-character line was cut; the rules say a non-zero exit voids the printed
@@ -47,7 +93,7 @@ attribute; the nested GGUF floods (2 MB and 3 x 1 MB); the ELF cut cases with
 the listing and summary order; the quote and 300,000-key safetensors files;
 the helpers on every earlier fixture. Doc-checked, not run: OpenSSL 3.2.x and
 3.3.x (source at each tag), `protoc`, `tshark`. Round 22 on this version's own
-changes has not run.
+changes ran on 27 Oct; its findings are v1.24.0.
 
 ## v1.22.0 (26 Oct 2026)
 

@@ -127,10 +127,11 @@ A saved capture is just a file. Read it; do not replay or fetch from it.
   so `5 +` the length starts one byte early; tested). Each frame gets fresh
   `<msg>` and `<rest>` names and `<rest>` is the next `<body>` (never the same
   name as the body it reads, which truncates it to nothing); read each frame's
-  flag byte first, `xxd -p -l 1 <body>` (`01` compressed, `80` a trailer, which
-  is status text, not a message); the walk ends at an empty `<rest>` or at the
-  cut's exit 1, and bytes left over after that exit are reported as a cut frame,
-  not decoded.
+  flag byte first, `xxd -p -l 1 <body>` (`00` plain, `01` compressed, `80` a
+  trailer, which is status text, not a message, `81` a compressed trailer; any
+  other value means the body is not gRPC-framed); the walk ends at an empty
+  `<rest>` or at the cut's exit 1, and bytes left over after that exit are
+  reported as a cut frame, not decoded.
   Decode an unframed message without a schema (`<msg>` from the cut, a `tshark`
   line's file, or the whole body when the content type is `application/x-protobuf`,
   which has no frame) with `protoc --decode_raw < <msg> > "$W/out/decode-<name>-<i>-<k>.txt"`,
